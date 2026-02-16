@@ -1,8 +1,15 @@
 import { authedFetch, parseApiError } from "@/lib/auth";
 import {
+  AuditLogListResponse,
+  AuditLogQuery,
   ManagedUser,
+  NotificationListResponse,
   PaginatedResponse,
   Role,
+  SlaEngineRunSummary,
+  SlaPolicy,
+  SlaTrackingListResponse,
+  SlaStatus,
   Ticket,
   TicketComment,
   TicketDetail,
@@ -136,5 +143,77 @@ export function addTicketComment(ticketId: string, input: AddTicketCommentInput)
   return requestJson<TicketComment>(`/tickets/${ticketId}/comments`, {
     method: "POST",
     body: JSON.stringify(input),
+  });
+}
+
+function buildAuditLogQuery(query: AuditLogQuery) {
+  const params = new URLSearchParams();
+
+  if (query.from) params.set("from", query.from);
+  if (query.to) params.set("to", query.to);
+  if (query.actor?.trim()) params.set("actor", query.actor.trim());
+  if (query.action && query.action !== "ALL") params.set("action", query.action);
+  if (query.resource?.trim()) params.set("resource", query.resource.trim());
+  if (query.success && query.success !== "ALL") params.set("success", query.success);
+  if (query.page) params.set("page", String(query.page));
+  if (query.pageSize) params.set("pageSize", String(query.pageSize));
+  if (query.sort) params.set("sort", query.sort);
+
+  const queryString = params.toString();
+  return queryString ? `?${queryString}` : "";
+}
+
+export function fetchAuditLogs(query: AuditLogQuery = {}) {
+  return requestJson<AuditLogListResponse>(`/audit-logs${buildAuditLogQuery(query)}`);
+}
+
+export async function exportAuditLogsCsv(query: AuditLogQuery = {}) {
+  const response = await authedFetch(`/audit-logs/export${buildAuditLogQuery(query)}`, {
+    method: "GET",
+  });
+  if (!response.ok) {
+    const message = await parseApiError(response);
+    throw new ApiError(message, response.status);
+  }
+  return response.blob();
+}
+
+export function fetchNotifications(query: { page?: number; pageSize?: number; unreadOnly?: boolean } = {}) {
+  const params = new URLSearchParams();
+  if (query.page) params.set("page", String(query.page));
+  if (query.pageSize) params.set("pageSize", String(query.pageSize));
+  if (query.unreadOnly !== undefined) params.set("unreadOnly", String(query.unreadOnly));
+  const queryString = params.toString();
+  return requestJson<NotificationListResponse>(`/notifications${queryString ? `?${queryString}` : ""}`);
+}
+
+export function markNotificationAsRead(notificationId: string) {
+  return requestJson(`/notifications/${notificationId}/read`, {
+    method: "PATCH",
+  });
+}
+
+export function markAllNotificationsAsRead() {
+  return requestJson<{ success: true; updatedCount: number }>("/notifications/read-all", {
+    method: "PATCH",
+  });
+}
+
+export function fetchSlaPolicies() {
+  return requestJson<SlaPolicy[]>("/sla/policies");
+}
+
+export function fetchSlaTracking(query: { page?: number; pageSize?: number; status?: SlaStatus | "ALL" } = {}) {
+  const params = new URLSearchParams();
+  if (query.page) params.set("page", String(query.page));
+  if (query.pageSize) params.set("pageSize", String(query.pageSize));
+  if (query.status && query.status !== "ALL") params.set("status", query.status);
+  const queryString = params.toString();
+  return requestJson<SlaTrackingListResponse>(`/sla/tracking${queryString ? `?${queryString}` : ""}`);
+}
+
+export function runSlaEngine() {
+  return requestJson<SlaEngineRunSummary>("/sla/engine/run", {
+    method: "POST",
   });
 }

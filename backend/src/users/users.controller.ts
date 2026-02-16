@@ -44,6 +44,11 @@ export class UsersController {
     @GetCurrentUser() currentUser: CurrentUser,
     @Req() req: Request,
   ) {
-    return this.usersService.updateStatus(id, dto.isActive, currentUser.sub, req);
+    return this.usersService.updateStatus(
+      id,
+      dto.isActive,
+      currentUser.sub,
+      req,
+    );
   }
 }

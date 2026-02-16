@@ -32,7 +32,7 @@ El comando `npm run dev` ahora usa `scripts/dev-orchestrator.mjs` para:
 
 - leer puertos configurados desde `frontend/.env.local` (`FRONTEND_PORT`) y `backend/.env` (`BACKEND_PORT` o `PORT`)
 - buscar automaticamente el siguiente puerto libre si hay choque
-- inyectar `PORT` y `CORS_ORIGIN` al backend en tiempo de ejecucion
+- inyectar `PORT` y `CORS_ORIGINS` al backend en tiempo de ejecucion
 
 Modos utiles:
 
@@ -55,6 +55,7 @@ Comandos en backend:
 ```bash
 npm run prisma:generate -w backend
 npm run prisma:migrate -w backend
+npm run prisma:migrate:deploy -w backend
 npm run prisma:studio -w backend
 ```
 
@@ -70,6 +71,7 @@ Schema inicial ITSM incluido:
 - `TicketAsset`
 - `SlaPolicy`
 - `TicketSlaTracking`
+- `Notification`
 
 ## API de tickets (Sprint 1)
 
@@ -129,6 +131,8 @@ Comando:
 ```bash
 npm run prisma:seed -w backend
 ```
+
+Nota: el seed esta bloqueado fuera de `NODE_ENV=development` (salvo override explicito `SEED_ALLOW_NON_DEV=true`).
 
 Usuarios creados/actualizados (idempotente):
 
@@ -219,6 +223,41 @@ Acciones auditadas:
 - `USER_STATUS_CHANGED`
 - `TICKET_UPDATED`
 - `TICKET_DELETED`
+- `SLA_ENGINE_RUN`
+- `SLA_STATUS_CHANGED`
+- `NOTIFICATION_CREATED`
+- `NOTIFICATION_READ`
+- `NOTIFICATION_READ_ALL`
+
+## SLA Engine + Notificaciones (Semanas 9-10)
+
+Backend:
+
+- Motor SLA con evaluacion de estado: `ON_TRACK`, `AT_RISK`, `BREACHED`, `MET`.
+- Ejecucion manual (`ADMIN`): `POST /api/sla/engine/run`.
+- Autorun configurable por entorno (`SLA_ENGINE_AUTORUN_ENABLED`, `SLA_ENGINE_INTERVAL_MS`).
+- Auto-asignacion de policy activa por defecto a tickets operativos sin policy.
+- Generacion de notificaciones cuando cambia estado SLA (riesgo/incumplido/cumplido).
+
+Endpoints SLA:
+
+- `GET /api/sla/policies` (`ADMIN`, `AGENT`)
+- `POST /api/sla/policies` (`ADMIN`)
+- `PATCH /api/sla/policies/:id` (`ADMIN`)
+- `GET /api/sla/tracking` (`ADMIN`, `AGENT`)
+- `POST /api/sla/engine/run` (`ADMIN`)
+
+Endpoints notificaciones:
+
+- `GET /api/notifications`
+- `PATCH /api/notifications/:id/read`
+- `PATCH /api/notifications/read-all`
+
+Frontend:
+
+- Bandeja de notificaciones en `portal/layout` con contador unread y acciones de lectura.
+- Pantalla admin de auditoria: `/portal/admin/audit` (filtros + export CSV).
+- Pantalla de monitor SLA (agent/admin): `/portal/agent/sla`.
 
 ## Dominio ITSM V1
 
@@ -232,6 +271,8 @@ Rutas principales:
 - `/portal/user`
 - `/portal/agent`
 - `/portal/admin`
+- `/portal/admin/audit`
+- `/portal/agent/sla`
 
 Implementado:
 
@@ -334,6 +375,64 @@ Pruebas de relevancia FTS (espanol):
 ```bash
 npm run test:e2e -w backend -- test/tickets-fts-spanish.e2e-spec.ts
 ```
+
+Validacion de SLA/Notificaciones/Auditoria (Semanas 9-10):
+
+```bash
+npm run prisma:migrate:deploy -w backend
+npm run prisma:generate -w backend
+npm run lint -w backend
+npm run build -w backend
+npm run lint -w frontend
+npm run build -w frontend
+```
+
+## Hardening Produccion
+
+Aplicado en backend:
+
+- Fail-fast de configuracion sensible:
+  - en `NODE_ENV=production` el backend no arranca si faltan secretos requeridos (`JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `BOOTSTRAP_ADMIN_SECRET`)
+  - en `production` se bloquean secretos debiles/placeholder y longitud menor a 32
+- Seguridad HTTP:
+  - `helmet`
+  - rate limiting global (`RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX`)
+  - request id (`X-Request-Id`) en todas las respuestas
+- Logging estructurado con `pino`:
+  - logs JSON de inicio/fin de request con `requestId`, metodo, path, status y latencia
+  - redaccion de campos sensibles (`authorization`, `cookie`, `password`, `refreshToken`)
+- CORS por entorno:
+  - `CORS_ORIGINS` (lista separada por comas)
+  - wildcard (`*`) bloqueado
+  - `CORS_CREDENTIALS=true` solo cuando aplique (por ejemplo sesion web con cookies)
+- Refresh token via cookie httpOnly (opcional):
+  - habilitar con `AUTH_REFRESH_COOKIE_ENABLED=true`
+  - parametros: `AUTH_REFRESH_COOKIE_NAME`, `AUTH_REFRESH_COOKIE_SECURE`, `AUTH_REFRESH_COOKIE_SAME_SITE`, `AUTH_REFRESH_COOKIE_DOMAIN`, `AUTH_REFRESH_COOKIE_PATH`
+  - endpoint `/api/auth/refresh` acepta token en body o cookie (si cookie mode activo)
+  - frontend: activar `NEXT_PUBLIC_AUTH_REFRESH_COOKIE=true` para enviar `credentials: include` en login/refresh
+
+Variables recomendadas en backend `.env`:
+
+- `NODE_ENV=development|test|production`
+- `CORS_ORIGINS=http://localhost:3000` (o lista)
+- `JWT_ACCESS_SECRET` (>=32 chars)
+- `JWT_REFRESH_SECRET` (>=32 chars)
+- `BOOTSTRAP_ADMIN_SECRET` (>=32 chars)
+- `RATE_LIMIT_WINDOW_MS=60000`
+- `RATE_LIMIT_MAX=120`
+- `LOG_LEVEL=info`
+
+## CI Pipeline
+
+Archivo: `.github/workflows/ci.yml`
+
+Incluye:
+
+- `prisma migrate deploy` (sin `migrate dev`)
+- lint (`frontend` + `backend`)
+- test (`backend` unit + e2e clave)
+- build (`frontend` + `backend`)
+- `npm audit` de dependencias productivas (`backend` + `frontend`)
 
 ## Abrir en VS Code
 

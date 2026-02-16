@@ -12,6 +12,11 @@ import { PrismaService } from '../src/prisma/prisma.service';
 loadEnv({ path: path.resolve(__dirname, '../.env') });
 
 describe('Tickets FTS Spanish relevance (e2e)', () => {
+  type TicketListResponse = {
+    total: number;
+    data: Array<{ title: string }>;
+  };
+
   let app: INestApplication<App>;
   let prisma: PrismaService;
   const requesterId = `fts-requester-${Date.now()}`;
@@ -32,7 +37,9 @@ describe('Tickets FTS Spanish relevance (e2e)', () => {
             role: String(
               requestRef.headers?.['x-user-role'] ?? UserRole.REQUESTER,
             ).toUpperCase(),
-            email: String(requestRef.headers?.['x-user-email'] ?? requesterEmail),
+            email: String(
+              requestRef.headers?.['x-user-email'] ?? requesterEmail,
+            ),
           };
           return true;
         },
@@ -116,10 +123,11 @@ describe('Tickets FTS Spanish relevance (e2e)', () => {
         pageSize: 20,
       })
       .expect(200);
+    const body = response.body as TicketListResponse;
 
-    expect(response.body.total).toBe(1);
-    expect(response.body.data).toHaveLength(1);
-    expect(response.body.data[0].title).toContain('gestionando');
+    expect(body.total).toBe(1);
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].title).toContain('gestionando');
   });
 
   it('CONTAINS no aplica stemming en la misma consulta', async () => {
@@ -134,8 +142,9 @@ describe('Tickets FTS Spanish relevance (e2e)', () => {
         pageSize: 20,
       })
       .expect(200);
+    const body = response.body as TicketListResponse;
 
-    expect(response.body.total).toBe(0);
-    expect(response.body.data).toHaveLength(0);
+    expect(body.total).toBe(0);
+    expect(body.data).toHaveLength(0);
   });
 });

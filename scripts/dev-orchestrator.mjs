@@ -146,10 +146,11 @@ async function main() {
   }
 
   const corsOrigin =
+    process.env.CORS_ORIGINS ??
     process.env.CORS_ORIGIN ??
     (runFrontend
       ? `http://localhost:${frontendPort}`
-      : (backendEnv.CORS_ORIGIN ?? `http://localhost:${preferredFrontendPort}`));
+      : (backendEnv.CORS_ORIGINS ?? backendEnv.CORS_ORIGIN ?? `http://localhost:${preferredFrontendPort}`));
 
   console.log(
     `[dev] Frontend port: ${runFrontend ? frontendPort : "disabled"} | Backend port: ${runBackend ? backendPort : "disabled"}`,
@@ -198,7 +199,7 @@ async function main() {
       `${npmCommand} run start:dev -w backend`,
       {
         PORT: String(backendPort),
-        CORS_ORIGIN: corsOrigin,
+        CORS_ORIGINS: corsOrigin,
       },
     );
     runningProcesses.push(backendProcess);

@@ -8,6 +8,14 @@ if (!connectionString) {
   throw new Error('DATABASE_URL no esta configurada en el entorno.');
 }
 
+const nodeEnv = (process.env.NODE_ENV ?? 'development').toLowerCase();
+const allowNonDevSeed = process.env.SEED_ALLOW_NON_DEV === 'true';
+if (!['development', 'dev'].includes(nodeEnv) && !allowNonDevSeed) {
+  throw new Error(
+    'Seed bloqueado fuera de desarrollo. Usa SEED_ALLOW_NON_DEV=true solo si entiendes el riesgo.',
+  );
+}
+
 const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
 
@@ -40,11 +48,16 @@ async function upsertUser({ email, fullName, role, password }) {
 }
 
 async function main() {
-  const defaultPassword = process.env.SEED_DEFAULT_PASSWORD ?? 'Password123!';
+  const defaultPassword = process.env.SEED_DEFAULT_PASSWORD;
+  const adminEmail = process.env.SEED_ADMIN_EMAIL;
+  const agentEmail = process.env.SEED_AGENT_EMAIL;
+  const requesterEmail = process.env.SEED_REQUESTER_EMAIL;
 
-  const adminEmail = process.env.SEED_ADMIN_EMAIL ?? 'admin@comutel.local';
-  const agentEmail = process.env.SEED_AGENT_EMAIL ?? 'agent@comutel.local';
-  const requesterEmail = process.env.SEED_REQUESTER_EMAIL ?? 'requester@comutel.local';
+  if (!defaultPassword || !adminEmail || !agentEmail || !requesterEmail) {
+    throw new Error(
+      'Faltan variables de seed: SEED_DEFAULT_PASSWORD, SEED_ADMIN_EMAIL, SEED_AGENT_EMAIL, SEED_REQUESTER_EMAIL.',
+    );
+  }
 
   const [admin, agent, requester] = await Promise.all([
     upsertUser({

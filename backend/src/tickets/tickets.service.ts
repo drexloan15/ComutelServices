@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   AuditAction,
   CommentType,
@@ -35,10 +39,21 @@ export class TicketsService {
     const text = query.text?.trim();
 
     if (query.searchMode === 'FTS' && text) {
-      return this.findAllWithFullText(currentUser, query, text, pageSize, requestedPage);
+      return this.findAllWithFullText(
+        currentUser,
+        query,
+        text,
+        pageSize,
+        requestedPage,
+      );
     }
 
-    return this.findAllWithContains(currentUser, query, pageSize, requestedPage);
+    return this.findAllWithContains(
+      currentUser,
+      query,
+      pageSize,
+      requestedPage,
+    );
   }
 
   private async findAllWithContains(
@@ -172,6 +187,7 @@ export class TicketsService {
           orderBy: { createdAt: 'asc' },
         },
         slaPolicy: true,
+        slaTracking: true,
         assets: {
           include: {
             asset: true,
@@ -284,7 +300,11 @@ export class TicketsService {
       status: dto.status,
       resolvedAt: nextStatus === TicketStatus.RESOLVED ? new Date() : undefined,
       closedAt: nextStatus === TicketStatus.CLOSED ? new Date() : undefined,
-      ...(assigneeId !== undefined && { assignee: assigneeId ? { connect: { id: assigneeId } } : { disconnect: true } }),
+      ...(assigneeId !== undefined && {
+        assignee: assigneeId
+          ? { connect: { id: assigneeId } }
+          : { disconnect: true },
+      }),
     };
 
     return this.prisma.$transaction(async (tx) => {
@@ -355,11 +375,21 @@ export class TicketsService {
     });
   }
 
-  async addComment(ticketId: string, dto: CreateTicketCommentDto, currentUser: CurrentUser) {
+  async addComment(
+    ticketId: string,
+    dto: CreateTicketCommentDto,
+    currentUser: CurrentUser,
+  ) {
     await this.findOne(ticketId, currentUser);
 
-    if (currentUser.role === 'REQUESTER' && dto.type && dto.type !== CommentType.PUBLIC_NOTE) {
-      throw new ForbiddenException('No tienes permisos para ese tipo de comentario');
+    if (
+      currentUser.role === 'REQUESTER' &&
+      dto.type &&
+      dto.type !== CommentType.PUBLIC_NOTE
+    ) {
+      throw new ForbiddenException(
+        'No tienes permisos para ese tipo de comentario',
+      );
     }
 
     const author = await this.prisma.user.findUnique({
@@ -395,7 +425,10 @@ export class TicketsService {
     });
   }
 
-  private getMetadata(request?: { ip?: string; headers?: Record<string, unknown> }) {
+  private getMetadata(request?: {
+    ip?: string;
+    headers?: Record<string, unknown>;
+  }) {
     const rawUserAgent = request?.headers?.['user-agent'];
     return {
       ipAddress: request?.ip,
@@ -403,13 +436,24 @@ export class TicketsService {
     };
   }
 
-  private assertTicketAccess(ticketRequesterId: string, currentUser: CurrentUser) {
-    if (currentUser.role === 'REQUESTER' && ticketRequesterId !== currentUser.sub) {
-      throw new ForbiddenException('No tienes permisos para acceder a este ticket');
+  private assertTicketAccess(
+    ticketRequesterId: string,
+    currentUser: CurrentUser,
+  ) {
+    if (
+      currentUser.role === 'REQUESTER' &&
+      ticketRequesterId !== currentUser.sub
+    ) {
+      throw new ForbiddenException(
+        'No tienes permisos para acceder a este ticket',
+      );
     }
   }
 
-  private buildTicketListWhere(currentUser: CurrentUser, query: TicketListQueryDto): Prisma.TicketWhereInput {
+  private buildTicketListWhere(
+    currentUser: CurrentUser,
+    query: TicketListQueryDto,
+  ): Prisma.TicketWhereInput {
     const filters: Prisma.TicketWhereInput[] = [];
 
     if (currentUser.role === 'REQUESTER') {
@@ -473,7 +517,9 @@ export class TicketsService {
     }
 
     if (query.priority) {
-      clauses.push(Prisma.sql`t."priority" = ${query.priority}::"TicketPriority"`);
+      clauses.push(
+        Prisma.sql`t."priority" = ${query.priority}::"TicketPriority"`,
+      );
     }
 
     const fromDate = this.parseDate(query.from);
@@ -519,7 +565,9 @@ export class TicketsService {
     return Prisma.sql`WHERE ${Prisma.join(clauses, ' AND ')}`;
   }
 
-  private buildTicketListOrderBy(sort?: TicketSort): Prisma.TicketOrderByWithRelationInput[] {
+  private buildTicketListOrderBy(
+    sort?: TicketSort,
+  ): Prisma.TicketOrderByWithRelationInput[] {
     switch (sort) {
       case 'CREATED_ASC':
         return [{ createdAt: 'asc' }];
@@ -547,7 +595,9 @@ export class TicketsService {
     }
   }
 
-  private parseCountValue(value: bigint | number | string | null | undefined): number {
+  private parseCountValue(
+    value: bigint | number | string | null | undefined,
+  ): number {
     if (typeof value === 'bigint') {
       return Number(value);
     }

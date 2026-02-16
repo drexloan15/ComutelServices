@@ -72,7 +72,10 @@ export class TicketsController {
 
   @Get(':id/comments')
   @Roles(UserRole.ADMIN, UserRole.AGENT, UserRole.REQUESTER)
-  findComments(@Param('id') id: string, @GetCurrentUser() currentUser: CurrentUser) {
+  findComments(
+    @Param('id') id: string,
+    @GetCurrentUser() currentUser: CurrentUser,
+  ) {
     return this.ticketsService.findComments(id, currentUser);
   }
 
@@ -88,7 +91,10 @@ export class TicketsController {
 
   @Get(':id/status-history')
   @Roles(UserRole.ADMIN, UserRole.AGENT, UserRole.REQUESTER)
-  findStatusHistory(@Param('id') id: string, @GetCurrentUser() currentUser: CurrentUser) {
+  findStatusHistory(
+    @Param('id') id: string,
+    @GetCurrentUser() currentUser: CurrentUser,
+  ) {
     return this.ticketsService.findStatusHistory(id, currentUser);
   }
 }

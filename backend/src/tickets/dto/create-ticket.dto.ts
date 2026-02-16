@@ -1,5 +1,17 @@
-import { TicketImpact, TicketPriority, TicketType, TicketUrgency } from '@prisma/client';
-import { IsEmail, IsEnum, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  TicketImpact,
+  TicketPriority,
+  TicketType,
+  TicketUrgency,
+} from '@prisma/client';
+import {
+  IsEmail,
+  IsEnum,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class CreateTicketDto {
   @IsString()

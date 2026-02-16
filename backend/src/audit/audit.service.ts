@@ -93,7 +93,7 @@ export class AuditService {
       ...(query.action ? { action: query.action } : {}),
       ...(query.resource ? { resource: query.resource } : {}),
       ...(query.success !== undefined ? { success: query.success } : {}),
-      ...((fromDate || toDate)
+      ...(fromDate || toDate
         ? {
             createdAt: {
               ...(fromDate ? { gte: fromDate } : {}),
@@ -105,8 +105,18 @@ export class AuditService {
         ? {
             OR: [
               { actorUserId: query.actor },
-              { actor: { is: { email: { contains: query.actor, mode: 'insensitive' } } } },
-              { actor: { is: { fullName: { contains: query.actor, mode: 'insensitive' } } } },
+              {
+                actor: {
+                  is: { email: { contains: query.actor, mode: 'insensitive' } },
+                },
+              },
+              {
+                actor: {
+                  is: {
+                    fullName: { contains: query.actor, mode: 'insensitive' },
+                  },
+                },
+              },
             ],
           }
         : {}),
@@ -124,7 +134,12 @@ export class AuditService {
       ipAddress: string | null;
       userAgent: string | null;
       createdAt: Date;
-      actor: { id: string; email: string; fullName: string; role: string } | null;
+      actor: {
+        id: string;
+        email: string;
+        fullName: string;
+        role: string;
+      } | null;
     }>,
   ) {
     const headers = [

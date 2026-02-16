@@ -116,7 +116,10 @@ export class UsersService {
     return updated;
   }
 
-  private getMetadata(request?: { ip?: string; headers?: Record<string, unknown> }) {
+  private getMetadata(request?: {
+    ip?: string;
+    headers?: Record<string, unknown>;
+  }) {
     const rawUserAgent = request?.headers?.['user-agent'];
     return {
       ipAddress: request?.ip,

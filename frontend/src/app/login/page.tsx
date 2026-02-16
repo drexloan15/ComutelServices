@@ -2,7 +2,12 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { API_BASE_URL, parseApiError, setSession } from "@/lib/auth";
+import {
+  API_BASE_URL,
+  parseApiError,
+  setSession,
+  USE_REFRESH_COOKIE,
+} from "@/lib/auth";
 import { AuthResponse } from "@/lib/types";
 
 export default function LoginPage() {
@@ -30,6 +35,7 @@ export default function LoginPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      credentials: USE_REFRESH_COOKIE ? "include" : "same-origin",
     });
 
     if (!response.ok) {

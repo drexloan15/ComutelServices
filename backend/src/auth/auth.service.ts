@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import type { StringValue } from 'ms';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { getRuntimeConfig } from '../config/runtime-config';
 import { LoginDto } from './dto/login.dto';
 import { BootstrapAdminDto } from './dto/bootstrap-admin.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -23,7 +24,10 @@ export class AuthService {
     private readonly auditService: AuditService,
   ) {}
 
-  async register(dto: RegisterDto, request?: { ip?: string; headers?: Record<string, unknown> }) {
+  async register(
+    dto: RegisterDto,
+    request?: { ip?: string; headers?: Record<string, unknown> },
+  ) {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -60,8 +64,12 @@ export class AuthService {
     };
   }
 
-  async bootstrapAdmin(dto: BootstrapAdminDto, request?: { ip?: string; headers?: Record<string, unknown> }) {
-    const expectedSecret = process.env.BOOTSTRAP_ADMIN_SECRET;
+  async bootstrapAdmin(
+    dto: BootstrapAdminDto,
+    request?: { ip?: string; headers?: Record<string, unknown> },
+  ) {
+    const config = getRuntimeConfig();
+    const expectedSecret = config.bootstrapAdminSecret;
     if (!expectedSecret || dto.bootstrapSecret !== expectedSecret) {
       throw new UnauthorizedException('Bootstrap secret invalido');
     }
@@ -107,7 +115,10 @@ export class AuthService {
     };
   }
 
-  async login(dto: LoginDto, request?: { ip?: string; headers?: Record<string, unknown> }) {
+  async login(
+    dto: LoginDto,
+    request?: { ip?: string; headers?: Record<string, unknown> },
+  ) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -142,11 +153,15 @@ export class AuthService {
     };
   }
 
-  async refresh(refreshToken: string, request?: { ip?: string; headers?: Record<string, unknown> }) {
+  async refresh(
+    refreshToken: string,
+    request?: { ip?: string; headers?: Record<string, unknown> },
+  ) {
+    const config = getRuntimeConfig();
     let payload: JwtPayload;
     try {
       payload = await this.jwtService.verifyAsync<JwtPayload>(refreshToken, {
-        secret: process.env.JWT_REFRESH_SECRET ?? 'dev_refresh_secret',
+        secret: config.jwtRefreshSecret,
       });
     } catch {
       throw new UnauthorizedException('Refresh token invalido');
@@ -160,7 +175,10 @@ export class AuthService {
       throw new UnauthorizedException('Sesion no valida');
     }
 
-    const refreshValid = await bcrypt.compare(refreshToken, user.refreshTokenHash);
+    const refreshValid = await bcrypt.compare(
+      refreshToken,
+      user.refreshTokenHash,
+    );
     if (!refreshValid) {
       throw new UnauthorizedException('Refresh token invalido');
     }
@@ -182,7 +200,10 @@ export class AuthService {
     };
   }
 
-  async logout(userId: string, request?: { ip?: string; headers?: Record<string, unknown> }) {
+  async logout(
+    userId: string,
+    request?: { ip?: string; headers?: Record<string, unknown> },
+  ) {
     await this.prisma.user.update({
       where: { id: userId },
       data: { refreshTokenHash: null },
@@ -209,17 +230,18 @@ export class AuthService {
   }
 
   private async generateTokens(userId: string, email: string, role: UserRole) {
+    const config = getRuntimeConfig();
     const payload: JwtPayload = { sub: userId, email, role };
-    const accessTtl = (process.env.JWT_ACCESS_TTL ?? '15m') as StringValue;
-    const refreshTtl = (process.env.JWT_REFRESH_TTL ?? '7d') as StringValue;
+    const accessTtl = config.jwtAccessTtl as StringValue;
+    const refreshTtl = config.jwtRefreshTtl as StringValue;
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
-        secret: process.env.JWT_ACCESS_SECRET ?? 'dev_access_secret',
+        secret: config.jwtAccessSecret,
         expiresIn: accessTtl,
       }),
       this.jwtService.signAsync(payload, {
-        secret: process.env.JWT_REFRESH_SECRET ?? 'dev_refresh_secret',
+        secret: config.jwtRefreshSecret,
         expiresIn: refreshTtl,
       }),
     ]);
@@ -257,7 +279,10 @@ export class AuthService {
     };
   }
 
-  private getMetadata(request?: { ip?: string; headers?: Record<string, unknown> }): AuditMetadata {
+  private getMetadata(request?: {
+    ip?: string;
+    headers?: Record<string, unknown>;
+  }): AuditMetadata {
     const rawUserAgent = request?.headers?.['user-agent'];
     return {
       ipAddress: request?.ip,

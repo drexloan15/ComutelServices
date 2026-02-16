@@ -25,6 +25,7 @@ model User {
   ownedAssets    Asset[]               @relation("AssetOwner")
   assetLinksMade TicketAsset[]         @relation("AssetLinkedBy")
   auditLogs      AuditLog[]            @relation("AuditActor")
+  notifications  Notification[]        @relation("NotificationRecipient")
 }
 
 model Ticket {
@@ -158,6 +159,8 @@ model TicketSlaTracking {
   slaPolicy            SlaPolicy @relation(fields: [slaPolicyId], references: [id])
 
   @@index([status])
+  @@index([responseDeadlineAt])
+  @@index([resolutionDeadlineAt])
 }
 
 model AuditLog {
@@ -175,6 +178,25 @@ model AuditLog {
 
   @@index([action, createdAt])
   @@index([actorUserId, createdAt])
+}
+
+model Notification {
+  id             String           @id @default(uuid())
+  recipientUserId String
+  type           NotificationType
+  title          String
+  body           String
+  resource       String?
+  resourceId     String?
+  metadata       Json?
+  isRead         Boolean          @default(false)
+  readAt         DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  recipient      User             @relation("NotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
+
+  @@index([recipientUserId, isRead, createdAt])
+  @@index([type, createdAt])
 }
 
 enum UserRole {
@@ -266,4 +288,16 @@ enum AuditAction {
   USER_STATUS_CHANGED
   TICKET_UPDATED
   TICKET_DELETED
+  SLA_ENGINE_RUN
+  SLA_STATUS_CHANGED
+  NOTIFICATION_CREATED
+  NOTIFICATION_READ
+  NOTIFICATION_READ_ALL
+}
+
+enum NotificationType {
+  SLA_AT_RISK
+  SLA_BREACHED
+  SLA_MET
+  SYSTEM
 }

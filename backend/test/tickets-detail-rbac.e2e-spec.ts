@@ -1,4 +1,9 @@
-import { ForbiddenException, INestApplication, NotFoundException, ValidationPipe } from '@nestjs/common';
+import {
+  ForbiddenException,
+  INestApplication,
+  NotFoundException,
+  ValidationPipe,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { UserRole } from '@prisma/client';
 import request from 'supertest';
@@ -14,13 +19,15 @@ function assertAccess(ticketId: string, currentUser: CurrentUser) {
     throw new NotFoundException(`Ticket ${ticketId} no existe`);
   }
   if (currentUser.role === UserRole.REQUESTER && ticketId === 'forbidden') {
-    throw new ForbiddenException('No tienes permisos para acceder a este ticket');
+    throw new ForbiddenException(
+      'No tienes permisos para acceder a este ticket',
+    );
   }
 }
 
 const ticketsServiceMock: Partial<TicketsService> = {
-  findAll: async () => [],
-  findOne: async (id: string, currentUser: CurrentUser) => {
+  findAll: () => [],
+  findOne: (id: string, currentUser: CurrentUser) => {
     assertAccess(id, currentUser);
     return {
       id,
@@ -41,15 +48,15 @@ const ticketsServiceMock: Partial<TicketsService> = {
       updatedAt: new Date().toISOString(),
     };
   },
-  findComments: async (id: string, currentUser: CurrentUser) => {
+  findComments: (id: string, currentUser: CurrentUser) => {
     assertAccess(id, currentUser);
     return [];
   },
-  findStatusHistory: async (id: string, currentUser: CurrentUser) => {
+  findStatusHistory: (id: string, currentUser: CurrentUser) => {
     assertAccess(id, currentUser);
     return [];
   },
-  addComment: async (id, dto, currentUser) => {
+  addComment: (id, dto, currentUser) => {
     assertAccess(id, currentUser);
     if (
       currentUser.role === UserRole.REQUESTER &&
@@ -74,9 +81,9 @@ const ticketsServiceMock: Partial<TicketsService> = {
       },
     };
   },
-  update: async () => ({ success: true }),
-  remove: async () => ({ success: true }),
-  create: async () => ({ id: 'ticket-created' }),
+  update: () => ({ success: true }),
+  remove: () => ({ success: true }),
+  create: () => ({ id: 'ticket-created' }),
 };
 
 describe('Tickets detail RBAC (e2e)', () => {
@@ -102,7 +109,9 @@ describe('Tickets detail RBAC (e2e)', () => {
           const role = String(
             requestRef.headers?.['x-user-role'] ?? UserRole.REQUESTER,
           ).toUpperCase() as UserRole;
-          const sub = String(requestRef.headers?.['x-user-id'] ?? 'requester-1');
+          const sub = String(
+            requestRef.headers?.['x-user-id'] ?? 'requester-1',
+          );
           requestRef.user = {
             sub,
             role,

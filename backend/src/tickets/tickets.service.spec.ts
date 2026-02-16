@@ -5,11 +5,18 @@ import { CurrentUser } from '../auth/types/current-user.type';
 import { TicketsService } from './tickets.service';
 
 describe('TicketsService.findAll', () => {
+  const queryRawMock = jest.fn<Promise<unknown[]>, [unknown]>();
+  const ticketCountMock = jest.fn<Promise<number>, [unknown]>();
+  const ticketFindManyMock = jest.fn<
+    Promise<Array<{ id: string }>>,
+    [unknown]
+  >();
+
   const prismaMock = {
-    $queryRaw: jest.fn(),
+    $queryRaw: queryRawMock,
     ticket: {
-      count: jest.fn(),
-      findMany: jest.fn(),
+      count: ticketCountMock,
+      findMany: ticketFindManyMock,
     },
   };
   const auditMock = {
@@ -33,13 +40,13 @@ describe('TicketsService.findAll', () => {
       role: UserRole.ADMIN,
     };
 
-    prismaMock.ticket.count.mockResolvedValue(3);
-    prismaMock.ticket.findMany.mockResolvedValue([{ id: 't-1' }]);
+    ticketCountMock.mockResolvedValue(3);
+    ticketFindManyMock.mockResolvedValue([{ id: 't-1' }]);
 
     const result = await service.findAll(currentUser, {});
 
-    expect(prismaMock.ticket.count).toHaveBeenCalledWith({ where: {} });
-    expect(prismaMock.ticket.findMany).toHaveBeenCalledWith(
+    expect(ticketCountMock).toHaveBeenCalledWith({ where: {} });
+    expect(ticketFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         skip: 0,
         take: 20,
@@ -62,8 +69,8 @@ describe('TicketsService.findAll', () => {
       role: UserRole.REQUESTER,
     };
 
-    prismaMock.ticket.count.mockResolvedValue(11);
-    prismaMock.ticket.findMany.mockResolvedValue([{ id: 't-99' }]);
+    ticketCountMock.mockResolvedValue(11);
+    ticketFindManyMock.mockResolvedValue([{ id: 't-99' }]);
 
     const result = await service.findAll(currentUser, {
       status: TicketStatus.OPEN,
@@ -76,30 +83,42 @@ describe('TicketsService.findAll', () => {
       pageSize: 5,
     });
 
-    const whereArg = prismaMock.ticket.count.mock.calls[0][0].where;
-    expect(whereArg).toEqual(
-      expect.objectContaining({
-        AND: expect.arrayContaining([
-          { requesterId: 'requester-1' },
-          { status: TicketStatus.OPEN },
-          { priority: TicketPriority.HIGH },
-          {
-            createdAt: {
-              gte: expect.any(Date),
-              lte: expect.any(Date),
-            },
-          },
-          {
-            OR: expect.arrayContaining([
-              { code: { contains: 'vpn', mode: 'insensitive' } },
-              { title: { contains: 'vpn', mode: 'insensitive' } },
-            ]),
-          },
-        ]),
-      }),
+    const firstCountCall = ticketCountMock.mock.calls[0]?.[0] as
+      | { where?: unknown }
+      | undefined;
+    const whereArg = firstCountCall?.where;
+    const andFilters = (
+      (whereArg as { AND?: unknown[] } | undefined)?.AND ?? []
+    ).filter(
+      (value): value is Record<string, unknown> =>
+        typeof value === 'object' && value !== null,
     );
 
-    expect(prismaMock.ticket.findMany).toHaveBeenCalledWith(
+    expect(andFilters).toContainEqual({ requesterId: 'requester-1' });
+    expect(andFilters).toContainEqual({ status: TicketStatus.OPEN });
+    expect(andFilters).toContainEqual({ priority: TicketPriority.HIGH });
+
+    const createdAtFilter = andFilters.find(
+      (filter) => 'createdAt' in filter,
+    ) as { createdAt?: { gte?: unknown; lte?: unknown } } | undefined;
+    expect(createdAtFilter?.createdAt?.gte).toBeInstanceOf(Date);
+    expect(createdAtFilter?.createdAt?.lte).toBeInstanceOf(Date);
+
+    const textFilter = andFilters.find((filter) => 'OR' in filter) as
+      | { OR?: unknown[] }
+      | undefined;
+    const textOrFilters = (textFilter?.OR ?? []).filter(
+      (value): value is Record<string, unknown> =>
+        typeof value === 'object' && value !== null,
+    );
+    expect(textOrFilters).toContainEqual({
+      code: { contains: 'vpn', mode: 'insensitive' },
+    });
+    expect(textOrFilters).toContainEqual({
+      title: { contains: 'vpn', mode: 'insensitive' },
+    });
+
+    expect(ticketFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         skip: 10,
         take: 5,
@@ -118,10 +137,10 @@ describe('TicketsService.findAll', () => {
       role: UserRole.ADMIN,
     };
 
-    prismaMock.$queryRaw
+    queryRawMock
       .mockResolvedValueOnce([{ total: BigInt(2) }])
       .mockResolvedValueOnce([{ id: 't-2' }, { id: 't-1' }]);
-    prismaMock.ticket.findMany.mockResolvedValue([{ id: 't-1' }, { id: 't-2' }]);
+    ticketFindManyMock.mockResolvedValue([{ id: 't-1' }, { id: 't-2' }]);
 
     const result = await service.findAll(currentUser, {
       text: 'correo vpn',
@@ -131,9 +150,9 @@ describe('TicketsService.findAll', () => {
       pageSize: 10,
     });
 
-    expect(prismaMock.ticket.count).not.toHaveBeenCalled();
-    expect(prismaMock.$queryRaw).toHaveBeenCalledTimes(2);
-    expect(prismaMock.ticket.findMany).toHaveBeenCalledWith(
+    expect(ticketCountMock).not.toHaveBeenCalled();
+    expect(queryRawMock).toHaveBeenCalledTimes(2);
+    expect(ticketFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: { in: ['t-2', 't-1'] } },
       }),

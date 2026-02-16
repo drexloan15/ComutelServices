@@ -2,6 +2,8 @@ import { AuthResponse, Role } from "./types";
 
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
+export const USE_REFRESH_COOKIE =
+  process.env.NEXT_PUBLIC_AUTH_REFRESH_COOKIE === "true";
 
 export const ACCESS_TOKEN_KEY = "comutel_access_token";
 export const REFRESH_TOKEN_KEY = "comutel_refresh_token";
@@ -18,9 +20,13 @@ function clearCookie(name: string) {
   document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax`;
 }
 
-export function setSession(accessToken: string, refreshToken: string, role: Role) {
+export function setSession(accessToken: string, refreshToken: string | null, role: Role) {
   localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  if (refreshToken) {
+    localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  } else {
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
+  }
   localStorage.setItem(ROLE_KEY, role);
 
   // Used by middleware for client-side route gating.
@@ -88,12 +94,13 @@ async function requestWithAccessToken(
     ...init,
     headers: buildHeaders(init, accessToken),
     cache: "no-store",
+    credentials: USE_REFRESH_COOKIE ? "include" : init?.credentials,
   });
 }
 
 async function refreshAccessToken() {
   const refreshToken = getRefreshToken();
-  if (!refreshToken) {
+  if (!USE_REFRESH_COOKIE && !refreshToken) {
     return null;
   }
 
@@ -102,8 +109,9 @@ async function refreshAccessToken() {
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ refreshToken }),
+    body: JSON.stringify(refreshToken ? { refreshToken } : {}),
     cache: "no-store",
+    credentials: USE_REFRESH_COOKIE ? "include" : "same-origin",
   });
 
   if (!response.ok) {
@@ -111,7 +119,7 @@ async function refreshAccessToken() {
   }
 
   const data = (await response.json()) as AuthResponse;
-  setSession(data.accessToken, data.refreshToken, data.user.role);
+  setSession(data.accessToken, data.refreshToken ?? refreshToken, data.user.role);
   return data.accessToken;
 }
 
