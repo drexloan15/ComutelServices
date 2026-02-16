@@ -1,0 +1,279 @@
+{
+  "_id": "tc_col_comutel_auth_rbac",
+  "colName": "Comutel Auth RBAC",
+  "created": "2026-02-16T19:42:00.000Z",
+  "sortNum": 10000,
+  "folders": [],
+  "requests": [
+    {
+      "_id": "tc_req_bootstrap_admin",
+      "colId": "tc_col_comutel_auth_rbac",
+      "containerId": "",
+      "name": "01 Bootstrap Admin (201/409)",
+      "url": "{{baseUrl}}/auth/bootstrap-admin",
+      "method": "POST",
+      "sortNum": 10000,
+      "created": "2026-02-16T19:42:00.000Z",
+      "modified": "2026-02-16T19:42:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\",\n  \"fullName\": \"Comutel Admin\",\n  \"bootstrapSecret\": \"{{bootstrapSecret}}\"\n}"
+      },
+      "tests": []
+    },
+    {
+      "_id": "tc_req_login_admin",
+      "colId": "tc_col_comutel_auth_rbac",
+      "containerId": "",
+      "name": "02 Login Admin (201)",
+      "url": "{{baseUrl}}/auth/login",
+      "method": "POST",
+      "sortNum": 10001,
+      "created": "2026-02-16T19:42:00.000Z",
+      "modified": "2026-02-16T19:42:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+      },
+      "tests": []
+    },
+    {
+      "_id": "tc_req_list_users_admin",
+      "colId": "tc_col_comutel_auth_rbac",
+      "containerId": "",
+      "name": "03 List Users as ADMIN (200)",
+      "url": "{{baseUrl}}/users",
+      "method": "GET",
+      "sortNum": 10002,
+      "created": "2026-02-16T19:42:00.000Z",
+      "modified": "2026-02-16T19:42:00.000Z",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{adminAccessToken}}"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "none",
+        "raw": ""
+      },
+      "tests": []
+    },
+    {
+      "_id": "tc_req_login_requester",
+      "colId": "tc_col_comutel_auth_rbac",
+      "containerId": "",
+      "name": "04 Login Requester (201)",
+      "url": "{{baseUrl}}/auth/login",
+      "method": "POST",
+      "sortNum": 10003,
+      "created": "2026-02-16T19:42:00.000Z",
+      "modified": "2026-02-16T19:42:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"email\": \"{{requesterEmail}}\",\n  \"password\": \"{{requesterPassword}}\"\n}"
+      },
+      "tests": []
+    },
+    {
+      "_id": "tc_req_users_403_requester",
+      "colId": "tc_col_comutel_auth_rbac",
+      "containerId": "",
+      "name": "05 List Users as REQUESTER (403)",
+      "url": "{{baseUrl}}/users",
+      "method": "GET",
+      "sortNum": 10004,
+      "created": "2026-02-16T19:42:00.000Z",
+      "modified": "2026-02-16T19:42:00.000Z",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{requesterAccessToken}}"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "none",
+        "raw": ""
+      },
+      "tests": []
+    },
+    {
+      "_id": "tc_req_create_ticket_requester",
+      "colId": "tc_col_comutel_auth_rbac",
+      "containerId": "",
+      "name": "06 Create Ticket as REQUESTER (201)",
+      "url": "{{baseUrl}}/tickets",
+      "method": "POST",
+      "sortNum": 10005,
+      "created": "2026-02-16T19:42:00.000Z",
+      "modified": "2026-02-16T19:42:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "Authorization",
+          "value": "Bearer {{requesterAccessToken}}"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"title\": \"Incidente RBAC prueba\",\n  \"requesterName\": \"Comutel Requester\",\n  \"requesterEmail\": \"{{requesterEmail}}\",\n  \"priority\": \"MEDIUM\"\n}"
+      },
+      "tests": []
+    },
+    {
+      "_id": "tc_req_patch_ticket_403_requester",
+      "colId": "tc_col_comutel_auth_rbac",
+      "containerId": "",
+      "name": "07 Patch Ticket as REQUESTER (403)",
+      "url": "{{baseUrl}}/tickets/{{ticketId}}",
+      "method": "PATCH",
+      "sortNum": 10006,
+      "created": "2026-02-16T19:42:00.000Z",
+      "modified": "2026-02-16T19:42:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "Authorization",
+          "value": "Bearer {{requesterAccessToken}}"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"status\": \"IN_PROGRESS\",\n  \"statusReason\": \"Requester no debe poder editar\"\n}"
+      },
+      "tests": []
+    },
+    {
+      "_id": "tc_req_change_role_admin",
+      "colId": "tc_col_comutel_auth_rbac",
+      "containerId": "",
+      "name": "08 Change Role REQUESTER->AGENT as ADMIN (200)",
+      "url": "{{baseUrl}}/users/{{requesterUserId}}/role",
+      "method": "PATCH",
+      "sortNum": 10007,
+      "created": "2026-02-16T19:42:00.000Z",
+      "modified": "2026-02-16T19:42:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "Authorization",
+          "value": "Bearer {{adminAccessToken}}"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"role\": \"AGENT\"\n}"
+      },
+      "tests": []
+    },
+    {
+      "_id": "tc_req_login_promoted",
+      "colId": "tc_col_comutel_auth_rbac",
+      "containerId": "",
+      "name": "09 Login Promoted User (201)",
+      "url": "{{baseUrl}}/auth/login",
+      "method": "POST",
+      "sortNum": 10008,
+      "created": "2026-02-16T19:42:00.000Z",
+      "modified": "2026-02-16T19:42:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"email\": \"{{requesterEmail}}\",\n  \"password\": \"{{requesterPassword}}\"\n}"
+      },
+      "tests": []
+    },
+    {
+      "_id": "tc_req_patch_ticket_agent",
+      "colId": "tc_col_comutel_auth_rbac",
+      "containerId": "",
+      "name": "10 Patch Ticket as AGENT (200)",
+      "url": "{{baseUrl}}/tickets/{{ticketId}}",
+      "method": "PATCH",
+      "sortNum": 10009,
+      "created": "2026-02-16T19:42:00.000Z",
+      "modified": "2026-02-16T19:42:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "Authorization",
+          "value": "Bearer {{promotedAccessToken}}"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"status\": \"IN_PROGRESS\",\n  \"statusReason\": \"Ahora puede editar como AGENT\"\n}"
+      },
+      "tests": []
+    },
+    {
+      "_id": "tc_req_audit_logs_admin",
+      "colId": "tc_col_comutel_auth_rbac",
+      "containerId": "",
+      "name": "11 Audit Logs as ADMIN (200)",
+      "url": "{{baseUrl}}/audit-logs?limit=50",
+      "method": "GET",
+      "sortNum": 10010,
+      "created": "2026-02-16T19:42:00.000Z",
+      "modified": "2026-02-16T19:42:00.000Z",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{adminAccessToken}}"
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "none",
+        "raw": ""
+      },
+      "tests": []
+    }
+  ],
+  "ref": "K68vQg0TR9Pt6ep4jL8fQ8"
+}

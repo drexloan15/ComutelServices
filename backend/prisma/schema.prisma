@@ -1,0 +1,264 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id             String                @id @default(uuid())
+  email          String                @unique
+  fullName       String
+  passwordHash   String?
+  refreshTokenHash String?
+  lastLoginAt    DateTime?
+  role           UserRole              @default(REQUESTER)
+  department     String?
+  isActive       Boolean               @default(true)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  assignedToMe   Ticket[]              @relation("AssignedTickets")
+  createdByMe    Ticket[]              @relation("CreatedTickets")
+  comments       TicketComment[]       @relation("CommentAuthor")
+  statusChanges  TicketStatusHistory[] @relation("StatusChangedBy")
+  ownedAssets    Asset[]               @relation("AssetOwner")
+  assetLinksMade TicketAsset[]         @relation("AssetLinkedBy")
+  auditLogs      AuditLog[]            @relation("AuditActor")
+}
+
+model Ticket {
+  id            String                @id @default(uuid())
+  code          String                @unique
+  title         String
+  description   String?
+  type          TicketType            @default(INCIDENT)
+  priority      TicketPriority        @default(MEDIUM)
+  impact        TicketImpact          @default(MEDIUM)
+  urgency       TicketUrgency         @default(MEDIUM)
+  status        TicketStatus          @default(OPEN)
+  dueAt         DateTime?
+  resolvedAt    DateTime?
+  closedAt      DateTime?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  requesterId   String
+  assigneeId    String?
+  slaPolicyId   String?
+  assignee      User?                 @relation("AssignedTickets", fields: [assigneeId], references: [id])
+  requester     User                  @relation("CreatedTickets", fields: [requesterId], references: [id])
+  comments      TicketComment[]
+  statusHistory TicketStatusHistory[]
+  assets        TicketAsset[]
+  slaPolicy     SlaPolicy?            @relation(fields: [slaPolicyId], references: [id])
+  slaTracking   TicketSlaTracking?
+
+  @@index([status, priority])
+  @@index([requesterId])
+  @@index([assigneeId])
+}
+
+model TicketComment {
+  id        String      @id @default(uuid())
+  ticketId  String
+  authorId  String
+  body      String
+  type      CommentType @default(PUBLIC_NOTE)
+  isEdited  Boolean     @default(false)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  ticket    Ticket      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author    User        @relation("CommentAuthor", fields: [authorId], references: [id])
+
+  @@index([ticketId, createdAt])
+}
+
+model TicketStatusHistory {
+  id          String       @id @default(uuid())
+  ticketId    String
+  fromStatus  TicketStatus?
+  toStatus    TicketStatus
+  reason      String?
+  changedById String
+  createdAt   DateTime     @default(now())
+  ticket      Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  changedBy   User         @relation("StatusChangedBy", fields: [changedById], references: [id])
+
+  @@index([ticketId, createdAt])
+}
+
+model Asset {
+  id              String      @id @default(uuid())
+  code            String      @unique
+  name            String
+  description     String?
+  type            AssetType
+  status          AssetStatus @default(IN_USE)
+  serialNumber    String?
+  vendor          String?
+  modelName       String?
+  location        String?
+  purchaseDate    DateTime?
+  warrantyEndDate DateTime?
+  ownerId         String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  owner           User?       @relation("AssetOwner", fields: [ownerId], references: [id])
+  ticketLinks     TicketAsset[]
+
+  @@index([status, type])
+}
+
+model TicketAsset {
+  ticketId    String
+  assetId     String
+  linkedById  String?
+  linkType    AssetLinkType @default(AFFECTED)
+  linkedAt    DateTime      @default(now())
+  ticket      Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  asset       Asset         @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  linkedBy    User?         @relation("AssetLinkedBy", fields: [linkedById], references: [id])
+
+  @@id([ticketId, assetId])
+  @@index([assetId])
+}
+
+model SlaPolicy {
+  id                    String             @id @default(uuid())
+  name                  String             @unique
+  description           String?
+  responseTimeMinutes   Int
+  resolutionTimeMinutes Int
+  businessHoursOnly     Boolean            @default(true)
+  isActive              Boolean            @default(true)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  tickets               Ticket[]
+  trackingRecords       TicketSlaTracking[]
+}
+
+model TicketSlaTracking {
+  id                   String    @id @default(uuid())
+  ticketId             String    @unique
+  slaPolicyId          String
+  responseDeadlineAt   DateTime
+  resolutionDeadlineAt DateTime
+  firstResponseAt      DateTime?
+  resolvedAt           DateTime?
+  breachedAt           DateTime?
+  status               SlaStatus @default(ON_TRACK)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  ticket               Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  slaPolicy            SlaPolicy @relation(fields: [slaPolicyId], references: [id])
+
+  @@index([status])
+}
+
+model AuditLog {
+  id          String      @id @default(uuid())
+  actorUserId String?
+  action      AuditAction
+  resource    String
+  resourceId  String?
+  success     Boolean     @default(true)
+  details     Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime    @default(now())
+  actor       User?       @relation("AuditActor", fields: [actorUserId], references: [id])
+
+  @@index([action, createdAt])
+  @@index([actorUserId, createdAt])
+}
+
+enum UserRole {
+  ADMIN
+  AGENT
+  REQUESTER
+}
+
+enum TicketType {
+  INCIDENT
+  SERVICE_REQUEST
+  PROBLEM
+  CHANGE
+  TASK
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketImpact {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TicketUrgency {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  PENDING
+  RESOLVED
+  CLOSED
+  CANCELLED
+}
+
+enum CommentType {
+  PUBLIC_NOTE
+  INTERNAL_NOTE
+  WORKLOG
+}
+
+enum AssetType {
+  HARDWARE
+  SOFTWARE
+  SERVICE
+  NETWORK
+  OTHER
+}
+
+enum AssetStatus {
+  IN_USE
+  AVAILABLE
+  MAINTENANCE
+  RETIRED
+  LOST
+}
+
+enum AssetLinkType {
+  AFFECTED
+  RELATED
+  ROOT_CAUSE
+}
+
+enum SlaStatus {
+  ON_TRACK
+  AT_RISK
+  BREACHED
+  MET
+}
+
+enum AuditAction {
+  AUTH_BOOTSTRAP_ADMIN
+  AUTH_REGISTER
+  AUTH_LOGIN
+  AUTH_REFRESH
+  AUTH_LOGOUT
+  USER_ROLE_CHANGED
+  USER_STATUS_CHANGED
+  TICKET_UPDATED
+  TICKET_DELETED
+}

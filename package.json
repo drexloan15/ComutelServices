@@ -1,0 +1,19 @@
+{
+  "name": "comutelservices",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "install:all": "npm install --workspaces",
+    "dev": "node scripts/dev-orchestrator.mjs",
+    "dev:frontend": "node scripts/dev-orchestrator.mjs --frontend-only",
+    "dev:backend": "node scripts/dev-orchestrator.mjs --backend-only",
+    "build": "npm run build -w frontend && npm run build -w backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
