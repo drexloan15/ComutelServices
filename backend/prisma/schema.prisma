@@ -54,8 +54,13 @@ model Ticket {
   slaTracking   TicketSlaTracking?
 
   @@index([status, priority])
+  @@index([status, priority, createdAt])
+  @@index([createdAt])
   @@index([requesterId])
+  @@index([requesterId, createdAt])
   @@index([assigneeId])
+  @@index([assigneeId, createdAt])
+  @@index([title])
 }
 
 model TicketComment {

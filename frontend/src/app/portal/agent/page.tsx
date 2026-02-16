@@ -7,11 +7,14 @@ import { useRouter } from "next/navigation";
 import { fetchMe, fetchTickets, getErrorMessage, updateTicket } from "@/lib/api-client";
 import { queryKeys } from "@/lib/query-keys";
 import {
-  filterAndSortTickets,
-  paginateTickets,
-  TicketSortOption,
-} from "@/lib/ticket-filters";
-import { Ticket, TicketPriority, TicketStatus, UserProfile } from "@/lib/types";
+  PaginatedResponse,
+  Ticket,
+  TicketListQuery,
+  TicketPriority,
+  TicketSort,
+  TicketStatus,
+  UserProfile,
+} from "@/lib/types";
 
 export default function AgentPortalPage() {
   const router = useRouter();
@@ -26,7 +29,7 @@ export default function AgentPortalPage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [searchText, setSearchText] = useState("");
-  const [sortOption, setSortOption] = useState<TicketSortOption>("CREATED_DESC");
+  const [sortOption, setSortOption] = useState<TicketSort>("CREATED_DESC");
   const [page, setPage] = useState(1);
   const pageSize = 6;
   const deferredSearchText = useDeferredValue(searchText);
@@ -44,15 +47,35 @@ export default function AgentPortalPage() {
     }
   }, [meQuery.isSuccess, roleAllowed, router]);
 
-  const ticketsQuery = useQuery<Ticket[]>({
-    queryKey: queryKeys.tickets,
-    queryFn: fetchTickets,
+  const ticketQueryParams = useMemo<TicketListQuery>(
+    () => ({
+      status: statusFilter,
+      priority: priorityFilter,
+      from: fromDate || undefined,
+      to: toDate || undefined,
+      text: deferredSearchText || undefined,
+      searchMode: deferredSearchText ? "FTS" : undefined,
+      sort: sortOption,
+      page,
+      pageSize,
+    }),
+    [statusFilter, priorityFilter, fromDate, toDate, deferredSearchText, sortOption, page],
+  );
+
+  const ticketsQuery = useQuery<PaginatedResponse<Ticket>>({
+    queryKey: queryKeys.ticketsList(ticketQueryParams),
+    queryFn: () => fetchTickets(ticketQueryParams),
     enabled: meQuery.isSuccess && roleAllowed,
   });
 
   const updateTicketMutation = useMutation({
-    mutationFn: ({ ticketId, payload }: { ticketId: string; payload: { status?: TicketStatus; priority?: TicketPriority; statusReason?: string } }) =>
-      updateTicket(ticketId, payload),
+    mutationFn: ({
+      ticketId,
+      payload,
+    }: {
+      ticketId: string;
+      payload: { status?: TicketStatus; priority?: TicketPriority; statusReason?: string };
+    }) => updateTicket(ticketId, payload),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.tickets });
     },
@@ -65,32 +88,22 @@ export default function AgentPortalPage() {
     getErrorMessage(ticketsQuery.error, "") ||
     getErrorMessage(updateTicketMutation.error, "");
 
-  const filteredTickets = useMemo(() => {
-    return filterAndSortTickets(ticketsQuery.data ?? [], {
-      status: statusFilter,
-      priority: priorityFilter,
-      fromDate,
-      toDate,
-      text: deferredSearchText,
-      sort: sortOption,
-    });
-  }, [ticketsQuery.data, statusFilter, priorityFilter, fromDate, toDate, deferredSearchText, sortOption]);
-
-  const pagination = useMemo(() => {
-    return paginateTickets(filteredTickets, page, pageSize);
-  }, [filteredTickets, page]);
+  const tickets = useMemo(() => ticketsQuery.data?.data ?? [], [ticketsQuery.data]);
+  const totalResults = ticketsQuery.data?.total ?? 0;
+  const totalPages = ticketsQuery.data?.totalPages ?? 1;
+  const currentPage = ticketsQuery.data?.page ?? page;
 
   const openCount = useMemo(
-    () => (ticketsQuery.data ?? []).filter((ticket) => ticket.status === "OPEN").length,
-    [ticketsQuery.data],
+    () => tickets.filter((ticket) => ticket.status === "OPEN").length,
+    [tickets],
   );
   const inProgressCount = useMemo(
-    () => (ticketsQuery.data ?? []).filter((ticket) => ticket.status === "IN_PROGRESS").length,
-    [ticketsQuery.data],
+    () => tickets.filter((ticket) => ticket.status === "IN_PROGRESS").length,
+    [tickets],
   );
   const pendingCount = useMemo(
-    () => (ticketsQuery.data ?? []).filter((ticket) => ticket.status === "PENDING").length,
-    [ticketsQuery.data],
+    () => tickets.filter((ticket) => ticket.status === "PENDING").length,
+    [tickets],
   );
 
   function resetToFirstPage() {
@@ -99,7 +112,8 @@ export default function AgentPortalPage() {
 
   async function saveTicket(ticketId: string) {
     setValidationError(null);
-    const payload: { status?: TicketStatus; priority?: TicketPriority; statusReason?: string } = {};
+    const payload: { status?: TicketStatus; priority?: TicketPriority; statusReason?: string } =
+      {};
     if (statusById[ticketId]) payload.status = statusById[ticketId];
     if (priorityById[ticketId]) payload.priority = priorityById[ticketId];
     if (reasonById[ticketId]) payload.statusReason = reasonById[ticketId];
@@ -135,11 +149,15 @@ export default function AgentPortalPage() {
           <p className="mt-2 text-3xl font-bold text-slate-900">{openCount}</p>
         </div>
         <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">En progreso</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+            En progreso
+          </p>
           <p className="mt-2 text-3xl font-bold text-cyan-700">{inProgressCount}</p>
         </div>
         <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Pendientes</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+            Pendientes
+          </p>
           <p className="mt-2 text-3xl font-bold text-amber-600">{pendingCount}</p>
         </div>
       </article>
@@ -150,9 +168,7 @@ export default function AgentPortalPage() {
       <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-lg font-semibold text-slate-900">Bandeja de tickets</h3>
-          <p className="text-sm text-slate-600">
-            {filteredTickets.length} resultado(s) de {(ticketsQuery.data ?? []).length}
-          </p>
+          <p className="text-sm text-slate-600">{totalResults} resultado(s)</p>
         </div>
 
         <div className="mb-5 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-6">
@@ -217,7 +233,7 @@ export default function AgentPortalPage() {
             className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm md:col-span-2"
             value={sortOption}
             onChange={(event) => {
-              setSortOption(event.target.value as TicketSortOption);
+              setSortOption(event.target.value as TicketSort);
               resetToFirstPage();
             }}
           >
@@ -229,12 +245,10 @@ export default function AgentPortalPage() {
         </div>
 
         {isLoading && <p className="text-slate-600">Cargando...</p>}
-        {!isLoading && filteredTickets.length === 0 && (
-          <p className="text-slate-600">No hay tickets.</p>
-        )}
-        {!isLoading && filteredTickets.length > 0 && (
+        {!isLoading && tickets.length === 0 && <p className="text-slate-600">No hay tickets.</p>}
+        {!isLoading && tickets.length > 0 && (
           <div className="space-y-4">
-            {pagination.items.map((ticket) => (
+            {tickets.map((ticket) => (
               <article key={ticket.id} className="rounded-lg border border-slate-200 p-4">
                 <p className="font-semibold text-slate-900">
                   {ticket.code} - {ticket.title}
@@ -303,20 +317,20 @@ export default function AgentPortalPage() {
             ))}
             <div className="flex items-center justify-between border-t border-slate-200 pt-3">
               <p className="text-sm text-slate-600">
-                Pagina {pagination.page} de {pagination.totalPages}
+                Pagina {currentPage} de {totalPages}
               </p>
               <div className="flex gap-2">
                 <button
                   className="rounded-md border border-slate-300 px-3 py-1 text-sm font-semibold text-slate-700 disabled:opacity-40"
-                  disabled={pagination.page <= 1}
-                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                  disabled={currentPage <= 1}
+                  onClick={() => setPage(Math.max(1, currentPage - 1))}
                 >
                   Anterior
                 </button>
                 <button
                   className="rounded-md border border-slate-300 px-3 py-1 text-sm font-semibold text-slate-700 disabled:opacity-40"
-                  disabled={pagination.page >= pagination.totalPages}
-                  onClick={() => setPage((prev) => Math.min(pagination.totalPages, prev + 1))}
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
                 >
                   Siguiente
                 </button>

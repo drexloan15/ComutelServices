@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -18,6 +19,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import type { CurrentUser } from '../auth/types/current-user.type';
 import { CreateTicketCommentDto } from './dto/create-ticket-comment.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
+import { TicketListQueryDto } from './dto/ticket-list-query.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { TicketsService } from './tickets.service';
 
@@ -28,8 +30,11 @@ export class TicketsController {
 
   @Get()
   @Roles(UserRole.ADMIN, UserRole.AGENT, UserRole.REQUESTER)
-  findAll(@GetCurrentUser() currentUser: CurrentUser) {
-    return this.ticketsService.findAll(currentUser);
+  findAll(
+    @GetCurrentUser() currentUser: CurrentUser,
+    @Query() query: TicketListQueryDto,
+  ) {
+    return this.ticketsService.findAll(currentUser, query);
   }
 
   @Get(':id')

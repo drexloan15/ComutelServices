@@ -10,7 +10,13 @@ import {
   getErrorMessage,
 } from "@/lib/api-client";
 import { queryKeys } from "@/lib/query-keys";
-import { Ticket, TicketPriority, TicketType, UserProfile } from "@/lib/types";
+import {
+  PaginatedResponse,
+  Ticket,
+  TicketPriority,
+  TicketType,
+  UserProfile,
+} from "@/lib/types";
 
 export default function UserPortalPage() {
   const [success, setSuccess] = useState<string | null>(null);
@@ -27,9 +33,15 @@ export default function UserPortalPage() {
     queryFn: fetchMe,
   });
 
-  const ticketsQuery = useQuery<Ticket[]>({
-    queryKey: queryKeys.tickets,
-    queryFn: fetchTickets,
+  const ticketListQuery = {
+    page: 1,
+    pageSize: 100,
+    sort: "CREATED_DESC" as const,
+  };
+
+  const ticketsQuery = useQuery<PaginatedResponse<Ticket>>({
+    queryKey: queryKeys.ticketsList(ticketListQuery),
+    queryFn: () => fetchTickets(ticketListQuery),
     enabled: meQuery.isSuccess,
   });
 
@@ -42,7 +54,7 @@ export default function UserPortalPage() {
 
   const visibleTickets = useMemo(() => {
     if (!meQuery.data) return [];
-    return (ticketsQuery.data ?? []).filter(
+    return (ticketsQuery.data?.data ?? []).filter(
       (ticket) => ticket.requester.email === meQuery.data?.email,
     );
   }, [meQuery.data, ticketsQuery.data]);

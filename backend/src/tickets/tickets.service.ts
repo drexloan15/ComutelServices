@@ -14,8 +14,13 @@ import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { CreateTicketCommentDto } from './dto/create-ticket-comment.dto';
+import { TicketListQueryDto, TicketSort } from './dto/ticket-list-query.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { CurrentUser } from '../auth/types/current-user.type';
+
+type TicketCountRow = {
+  total: bigint | number | string;
+};
 
 @Injectable()
 export class TicketsService {
@@ -24,19 +29,132 @@ export class TicketsService {
     private readonly auditService: AuditService,
   ) {}
 
-  findAll(currentUser: CurrentUser) {
-    return this.prisma.ticket.findMany({
-      where:
-        currentUser.role === 'REQUESTER'
-          ? { requesterId: currentUser.sub }
-          : undefined,
+  async findAll(currentUser: CurrentUser, query: TicketListQueryDto) {
+    const pageSize = query.pageSize ?? 20;
+    const requestedPage = query.page ?? 1;
+    const text = query.text?.trim();
+
+    if (query.searchMode === 'FTS' && text) {
+      return this.findAllWithFullText(currentUser, query, text, pageSize, requestedPage);
+    }
+
+    return this.findAllWithContains(currentUser, query, pageSize, requestedPage);
+  }
+
+  private async findAllWithContains(
+    currentUser: CurrentUser,
+    query: TicketListQueryDto,
+    pageSize: number,
+    requestedPage: number,
+  ) {
+    const where = this.buildTicketListWhere(currentUser, query);
+    const orderBy = this.buildTicketListOrderBy(query.sort);
+
+    const total = await this.prisma.ticket.count({ where });
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.min(Math.max(requestedPage, 1), totalPages);
+    const skip = (page - 1) * pageSize;
+
+    const data = await this.prisma.ticket.findMany({
+      where,
       include: {
         requester: true,
         assignee: true,
         slaPolicy: true,
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy,
+      skip,
+      take: pageSize,
     });
+
+    return {
+      data,
+      total,
+      page,
+      pageSize,
+      totalPages,
+    };
+  }
+
+  private async findAllWithFullText(
+    currentUser: CurrentUser,
+    query: TicketListQueryDto,
+    text: string,
+    pageSize: number,
+    requestedPage: number,
+  ) {
+    const whereSql = this.buildTicketListFtsWhere(currentUser, query, text);
+    const orderBySql = this.buildFtsOrderBySql(query.sort);
+
+    const countRows = await this.prisma.$queryRaw<TicketCountRow[]>(
+      Prisma.sql`
+        SELECT COUNT(*) AS "total"
+        FROM "Ticket" t
+        ${whereSql}
+      `,
+    );
+    const total = this.parseCountValue(countRows[0]?.total);
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.min(Math.max(requestedPage, 1), totalPages);
+    const skip = (page - 1) * pageSize;
+
+    if (total === 0) {
+      return {
+        data: [],
+        total,
+        page,
+        pageSize,
+        totalPages,
+      };
+    }
+
+    const idRows = await this.prisma.$queryRaw<Array<{ id: string }>>(
+      Prisma.sql`
+        SELECT t."id"
+        FROM "Ticket" t
+        ${whereSql}
+        ORDER BY ${orderBySql}
+        OFFSET ${skip}
+        LIMIT ${pageSize}
+      `,
+    );
+    const ids = idRows.map((row) => row.id);
+
+    if (ids.length === 0) {
+      return {
+        data: [],
+        total,
+        page,
+        pageSize,
+        totalPages,
+      };
+    }
+
+    const tickets = await this.prisma.ticket.findMany({
+      where: {
+        id: {
+          in: ids,
+        },
+      },
+      include: {
+        requester: true,
+        assignee: true,
+        slaPolicy: true,
+      },
+    });
+    const ticketsById = new Map(tickets.map((ticket) => [ticket.id, ticket]));
+    const data = ids.flatMap((id) => {
+      const ticket = ticketsById.get(id);
+      return ticket ? [ticket] : [];
+    });
+
+    return {
+      data,
+      total,
+      page,
+      pageSize,
+      totalPages,
+    };
   }
 
   async findOne(id: string, currentUser: CurrentUser) {
@@ -289,5 +407,182 @@ export class TicketsService {
     if (currentUser.role === 'REQUESTER' && ticketRequesterId !== currentUser.sub) {
       throw new ForbiddenException('No tienes permisos para acceder a este ticket');
     }
+  }
+
+  private buildTicketListWhere(currentUser: CurrentUser, query: TicketListQueryDto): Prisma.TicketWhereInput {
+    const filters: Prisma.TicketWhereInput[] = [];
+
+    if (currentUser.role === 'REQUESTER') {
+      filters.push({ requesterId: currentUser.sub });
+    }
+
+    if (query.status) {
+      filters.push({ status: query.status });
+    }
+
+    if (query.priority) {
+      filters.push({ priority: query.priority });
+    }
+
+    const fromDate = this.parseDate(query.from);
+    const toDate = this.parseDate(query.to);
+    if (fromDate || toDate) {
+      filters.push({
+        createdAt: {
+          ...(fromDate ? { gte: this.atDayStart(fromDate) } : {}),
+          ...(toDate ? { lte: this.atDayEnd(toDate) } : {}),
+        },
+      });
+    }
+
+    const text = query.text?.trim();
+    if (text) {
+      filters.push({
+        OR: [
+          { code: { contains: text, mode: 'insensitive' } },
+          { title: { contains: text, mode: 'insensitive' } },
+          { description: { contains: text, mode: 'insensitive' } },
+          { requester: { fullName: { contains: text, mode: 'insensitive' } } },
+          { requester: { email: { contains: text, mode: 'insensitive' } } },
+          { assignee: { fullName: { contains: text, mode: 'insensitive' } } },
+          { assignee: { email: { contains: text, mode: 'insensitive' } } },
+        ],
+      });
+    }
+
+    if (filters.length === 0) {
+      return {};
+    }
+
+    return { AND: filters };
+  }
+
+  private buildTicketListFtsWhere(
+    currentUser: CurrentUser,
+    query: TicketListQueryDto,
+    text: string,
+  ): Prisma.Sql {
+    const clauses: Prisma.Sql[] = [];
+
+    if (currentUser.role === 'REQUESTER') {
+      clauses.push(Prisma.sql`t."requesterId" = ${currentUser.sub}`);
+    }
+
+    if (query.status) {
+      clauses.push(Prisma.sql`t."status" = ${query.status}::"TicketStatus"`);
+    }
+
+    if (query.priority) {
+      clauses.push(Prisma.sql`t."priority" = ${query.priority}::"TicketPriority"`);
+    }
+
+    const fromDate = this.parseDate(query.from);
+    const toDate = this.parseDate(query.to);
+    if (fromDate) {
+      clauses.push(Prisma.sql`t."createdAt" >= ${this.atDayStart(fromDate)}`);
+    }
+    if (toDate) {
+      clauses.push(Prisma.sql`t."createdAt" <= ${this.atDayEnd(toDate)}`);
+    }
+
+    clauses.push(Prisma.sql`
+      (
+        to_tsvector(
+          'spanish',
+          coalesce(t."code", '') || ' ' || coalesce(t."title", '') || ' ' || coalesce(t."description", '')
+        ) @@ websearch_to_tsquery('spanish', ${text})
+        OR EXISTS (
+          SELECT 1
+          FROM "User" requester
+          WHERE requester."id" = t."requesterId"
+            AND to_tsvector(
+              'spanish',
+              coalesce(requester."fullName", '') || ' ' || coalesce(requester."email", '')
+            ) @@ websearch_to_tsquery('spanish', ${text})
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM "User" assignee
+          WHERE assignee."id" = t."assigneeId"
+            AND to_tsvector(
+              'spanish',
+              coalesce(assignee."fullName", '') || ' ' || coalesce(assignee."email", '')
+            ) @@ websearch_to_tsquery('spanish', ${text})
+        )
+      )
+    `);
+
+    if (clauses.length === 0) {
+      return Prisma.sql``;
+    }
+
+    return Prisma.sql`WHERE ${Prisma.join(clauses, ' AND ')}`;
+  }
+
+  private buildTicketListOrderBy(sort?: TicketSort): Prisma.TicketOrderByWithRelationInput[] {
+    switch (sort) {
+      case 'CREATED_ASC':
+        return [{ createdAt: 'asc' }];
+      case 'PRIORITY_DESC':
+        return [{ priority: 'desc' }, { createdAt: 'desc' }];
+      case 'PRIORITY_ASC':
+        return [{ priority: 'asc' }, { createdAt: 'desc' }];
+      case 'CREATED_DESC':
+      default:
+        return [{ createdAt: 'desc' }];
+    }
+  }
+
+  private buildFtsOrderBySql(sort?: TicketSort): Prisma.Sql {
+    switch (sort) {
+      case 'CREATED_ASC':
+        return Prisma.sql`t."createdAt" ASC`;
+      case 'PRIORITY_DESC':
+        return Prisma.sql`t."priority" DESC, t."createdAt" DESC`;
+      case 'PRIORITY_ASC':
+        return Prisma.sql`t."priority" ASC, t."createdAt" DESC`;
+      case 'CREATED_DESC':
+      default:
+        return Prisma.sql`t."createdAt" DESC`;
+    }
+  }
+
+  private parseCountValue(value: bigint | number | string | null | undefined): number {
+    if (typeof value === 'bigint') {
+      return Number(value);
+    }
+    if (typeof value === 'number') {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return 0;
+  }
+
+  private parseDate(value?: string): Date | null {
+    if (!value) {
+      return null;
+    }
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+
+    return parsed;
+  }
+
+  private atDayStart(date: Date) {
+    const normalized = new Date(date);
+    normalized.setHours(0, 0, 0, 0);
+    return normalized;
+  }
+
+  private atDayEnd(date: Date) {
+    const normalized = new Date(date);
+    normalized.setHours(23, 59, 59, 999);
+    return normalized;
   }
 }

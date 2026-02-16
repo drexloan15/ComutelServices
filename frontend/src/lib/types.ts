@@ -10,6 +10,8 @@ export type TicketStatus =
 
 export type TicketPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 export type TicketType = "INCIDENT" | "SERVICE_REQUEST" | "PROBLEM" | "CHANGE" | "TASK";
+export type TicketSort = "CREATED_DESC" | "CREATED_ASC" | "PRIORITY_DESC" | "PRIORITY_ASC";
+export type TicketSearchMode = "CONTAINS" | "FTS";
 
 export type UserProfile = {
   id: string;
@@ -87,6 +89,26 @@ export type ManagedUser = {
   fullName: string;
   role: Role;
   isActive: boolean;
+};
+
+export type PaginatedResponse<TItem> = {
+  data: TItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+export type TicketListQuery = {
+  status?: TicketStatus | "ALL";
+  priority?: TicketPriority | "ALL";
+  from?: string;
+  to?: string;
+  text?: string;
+  sort?: TicketSort;
+  searchMode?: TicketSearchMode;
+  page?: number;
+  pageSize?: number;
 };
 
 export type AuthResponse = {

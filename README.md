@@ -82,6 +82,30 @@ Schema inicial ITSM incluido:
 - `POST /api/tickets/:id/comments`
 - `GET /api/tickets/:id/status-history`
 
+`GET /api/tickets` (server-side filtros + paginacion):
+
+- `status`: `OPEN|IN_PROGRESS|PENDING|RESOLVED|CLOSED|CANCELLED`
+- `priority`: `LOW|MEDIUM|HIGH|URGENT`
+- `from`: fecha ISO (`YYYY-MM-DD` o ISO8601)
+- `to`: fecha ISO (`YYYY-MM-DD` o ISO8601)
+- `text`: busqueda por codigo/titulo/descripcion/requester/assignee
+- `searchMode`: `CONTAINS|FTS` (recomendado `FTS` para escala alta)
+- `sort`: `CREATED_DESC|CREATED_ASC|PRIORITY_DESC|PRIORITY_ASC`
+- `page`: entero >= 1 (default `1`)
+- `pageSize`: entero `1..100` (default `20`)
+
+Respuesta:
+
+```json
+{
+  "data": [],
+  "total": 0,
+  "page": 1,
+  "pageSize": 20,
+  "totalPages": 1
+}
+```
+
 Detalle y permisos (Punto 2):
 
 - `REQUESTER` solo puede consultar/comentar sus propios tickets (`403` en acceso cruzado).
@@ -233,8 +257,10 @@ Implementado:
 - Filtros de tickets en portales `AGENT` y `ADMIN` (Punto 4):
   - estado, prioridad, rango de fecha (`from/to`) y texto
   - orden configurable (fecha y prioridad)
-  - paginacion local para bandejas filtradas
-  - procesamiento memoizado (`useMemo` + `useDeferredValue`) para UX/rendimiento basico
+  - paginacion server-side en `GET /api/tickets` con metadata (`total/page/pageSize/totalPages`)
+  - `searchMode=FTS` automatico en frontend cuando hay texto de busqueda (agent/admin)
+  - busqueda diferida en frontend con `useDeferredValue` para UX/rendimiento basico
+  - integracion React Query con `queryKey` por filtros para cache/refetch consistente
 - Refinamiento visual inspirado en consola operativa:
   - login en layout split (hero + formulario)
   - portal usuario con hero de ayuda, busqueda y panel lateral de creacion de ticket
@@ -266,6 +292,47 @@ Validacion frontend para filtros y UX de portales (Punto 4):
 ```bash
 npm run lint -w frontend
 npm run build -w frontend
+```
+
+Validacion backend para filtros y paginacion server-side:
+
+```bash
+npm run test -w backend -- tickets.service.spec.ts
+```
+
+## Escalado de busqueda (DB)
+
+Aplicado en migraciones:
+
+- `backend/prisma/migrations/20260216221000_ticket_search_indexes_fts/migration.sql`
+- `backend/prisma/migrations/20260216225500_ticket_fts_spanish_dictionary/migration.sql`
+
+- `pg_trgm` habilitado para acelerar `ILIKE/contains`.
+- Indices B-Tree para filtros/orden:
+  - `Ticket(status, priority, createdAt)`
+  - `Ticket(createdAt)`
+  - `Ticket(requesterId, createdAt)`
+  - `Ticket(assigneeId, createdAt)`
+  - `Ticket(title)`
+- Indices trigram (`GIN`) para texto:
+  - `Ticket.code`, `Ticket.title`, `Ticket.description`
+  - `User.fullName`, `User.email`
+- Indices full-text (`GIN + to_tsvector`) para modo `FTS`:
+  - `Ticket`: `code + title + description`
+  - `User`: `fullName + email`
+- Diccionario FTS en produccion: `spanish` (stemming en espanol).
+- Validacion de relevancia: `gestionar` encuentra `gestionando` en `searchMode=FTS`.
+
+Comando aplicado:
+
+```bash
+npm exec -w backend -- prisma migrate deploy
+```
+
+Pruebas de relevancia FTS (espanol):
+
+```bash
+npm run test:e2e -w backend -- test/tickets-fts-spanish.e2e-spec.ts
 ```
 
 ## Abrir en VS Code

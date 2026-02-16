@@ -1,10 +1,12 @@
 import { authedFetch, parseApiError } from "@/lib/auth";
 import {
   ManagedUser,
+  PaginatedResponse,
   Role,
   Ticket,
   TicketComment,
   TicketDetail,
+  TicketListQuery,
   TicketPriority,
   TicketStatus,
   TicketStatusHistoryEntry,
@@ -65,8 +67,25 @@ export function fetchMe() {
   return requestJson<UserProfile>("/auth/me");
 }
 
-export function fetchTickets() {
-  return requestJson<Ticket[]>("/tickets");
+function buildTicketListQuery(query: TicketListQuery) {
+  const params = new URLSearchParams();
+
+  if (query.status && query.status !== "ALL") params.set("status", query.status);
+  if (query.priority && query.priority !== "ALL") params.set("priority", query.priority);
+  if (query.from) params.set("from", query.from);
+  if (query.to) params.set("to", query.to);
+  if (query.text?.trim()) params.set("text", query.text.trim());
+  if (query.sort) params.set("sort", query.sort);
+  if (query.searchMode) params.set("searchMode", query.searchMode);
+  if (query.page) params.set("page", String(query.page));
+  if (query.pageSize) params.set("pageSize", String(query.pageSize));
+
+  const queryString = params.toString();
+  return queryString ? `?${queryString}` : "";
+}
+
+export function fetchTickets(query: TicketListQuery = {}) {
+  return requestJson<PaginatedResponse<Ticket>>(`/tickets${buildTicketListQuery(query)}`);
 }
 
 export function fetchUsers() {
