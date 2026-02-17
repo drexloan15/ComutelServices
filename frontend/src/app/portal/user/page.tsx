@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FormEvent, useDeferredValue, useMemo, useState } from "react";
 import {
   createTicket,
+  fetchKnowledgeArticles,
   fetchMe,
   fetchTickets,
   getErrorMessage,
@@ -15,6 +16,7 @@ import {
   Ticket,
   TicketPriority,
   TicketType,
+  KnowledgeArticle,
   UserProfile,
 } from "@/lib/types";
 
@@ -42,6 +44,23 @@ export default function UserPortalPage() {
   const ticketsQuery = useQuery<PaginatedResponse<Ticket>>({
     queryKey: queryKeys.ticketsList(ticketListQuery),
     queryFn: () => fetchTickets(ticketListQuery),
+    enabled: meQuery.isSuccess,
+  });
+
+  const knowledgeQuery = useQuery<PaginatedResponse<KnowledgeArticle>>({
+    queryKey: queryKeys.knowledgeArticles({
+      page: 1,
+      pageSize: 3,
+      publishedOnly: true,
+      sort: "LATEST",
+    }),
+    queryFn: () =>
+      fetchKnowledgeArticles({
+        page: 1,
+        pageSize: 3,
+        publishedOnly: true,
+        sort: "LATEST",
+      }),
     enabled: meQuery.isSuccess,
   });
 
@@ -207,6 +226,36 @@ export default function UserPortalPage() {
           </form>
         </article>
       </div>
+
+      <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-slate-900">Knowledge recomendado</h3>
+          <Link
+            className="text-sm font-semibold text-blue-700"
+            href="/portal/user/knowledge"
+          >
+            Ver toda la base
+          </Link>
+        </div>
+        {(knowledgeQuery.data?.data ?? []).length === 0 && (
+          <p className="text-slate-600">Sin articulos publicados por ahora.</p>
+        )}
+        {(knowledgeQuery.data?.data ?? []).length > 0 && (
+          <div className="grid gap-3 md:grid-cols-3">
+            {(knowledgeQuery.data?.data ?? []).map((article) => (
+              <article key={article.id} className="rounded-lg border border-slate-200 p-3">
+                <p className="text-sm font-semibold text-slate-900">{article.title}</p>
+                <p className="mt-1 line-clamp-3 text-xs text-slate-600">
+                  {article.excerpt || article.body}
+                </p>
+                <p className="mt-2 text-[11px] text-slate-500">
+                  {article._count.comments} comentario(s)
+                </p>
+              </article>
+            ))}
+          </div>
+        )}
+      </article>
     </section>
   );
 }

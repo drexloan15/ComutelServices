@@ -28,7 +28,10 @@ export type AuditAction =
   | "SLA_STATUS_CHANGED"
   | "NOTIFICATION_CREATED"
   | "NOTIFICATION_READ"
-  | "NOTIFICATION_READ_ALL";
+  | "NOTIFICATION_READ_ALL"
+  | "KNOWLEDGE_ARTICLE_CREATED"
+  | "KNOWLEDGE_ARTICLE_UPDATED"
+  | "KNOWLEDGE_COMMENT_CREATED";
 
 export type UserProfile = {
   id: string;
@@ -250,3 +253,61 @@ export type SlaEngineRunSummary = {
   changedStatusCount: number;
   notificationsCreated: number;
 };
+
+export type KnowledgeArticle = {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt?: string | null;
+  body: string;
+  coverImageUrl?: string | null;
+  galleryImageUrls: string[];
+  tags: string[];
+  isPublished: boolean;
+  publishedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  author: {
+    id: string;
+    email: string;
+    fullName: string;
+    role: Role;
+  };
+  _count: {
+    comments: number;
+  };
+};
+
+export type KnowledgeComment = {
+  id: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  author: {
+    id: string;
+    email: string;
+    fullName: string;
+    role: Role;
+  };
+};
+
+export type KnowledgeListQuery = {
+  search?: string;
+  tag?: string;
+  publishedOnly?: boolean;
+  page?: number;
+  pageSize?: number;
+  sort?: "LATEST" | "OLDEST";
+};
+
+export type CreateKnowledgeArticleInput = {
+  title: string;
+  excerpt?: string;
+  body: string;
+  coverImageUrl?: string;
+  galleryImageUrls?: string[];
+  tags?: string[];
+  isPublished?: boolean;
+};
+
+export type UpdateKnowledgeArticleInput = Partial<CreateKnowledgeArticleInput>;

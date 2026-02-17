@@ -2,6 +2,10 @@ import { authedFetch, parseApiError } from "@/lib/auth";
 import {
   AuditLogListResponse,
   AuditLogQuery,
+  CreateKnowledgeArticleInput,
+  KnowledgeArticle,
+  KnowledgeComment,
+  KnowledgeListQuery,
   ManagedUser,
   NotificationListResponse,
   PaginatedResponse,
@@ -18,6 +22,7 @@ import {
   TicketStatus,
   TicketStatusHistoryEntry,
   TicketType,
+  UpdateKnowledgeArticleInput,
   UserProfile,
 } from "@/lib/types";
 
@@ -215,5 +220,54 @@ export function fetchSlaTracking(query: { page?: number; pageSize?: number; stat
 export function runSlaEngine() {
   return requestJson<SlaEngineRunSummary>("/sla/engine/run", {
     method: "POST",
+  });
+}
+
+function buildKnowledgeQuery(query: KnowledgeListQuery) {
+  const params = new URLSearchParams();
+
+  if (query.search?.trim()) params.set("search", query.search.trim());
+  if (query.tag?.trim()) params.set("tag", query.tag.trim());
+  if (query.publishedOnly !== undefined) params.set("publishedOnly", String(query.publishedOnly));
+  if (query.page) params.set("page", String(query.page));
+  if (query.pageSize) params.set("pageSize", String(query.pageSize));
+  if (query.sort) params.set("sort", query.sort);
+
+  const queryString = params.toString();
+  return queryString ? `?${queryString}` : "";
+}
+
+export function fetchKnowledgeArticles(query: KnowledgeListQuery = {}) {
+  return requestJson<PaginatedResponse<KnowledgeArticle>>(
+    `/knowledge/articles${buildKnowledgeQuery(query)}`,
+  );
+}
+
+export function fetchKnowledgeArticleDetail(articleId: string) {
+  return requestJson<KnowledgeArticle>(`/knowledge/articles/${articleId}`);
+}
+
+export function createKnowledgeArticle(input: CreateKnowledgeArticleInput) {
+  return requestJson<KnowledgeArticle>("/knowledge/articles", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateKnowledgeArticle(articleId: string, input: UpdateKnowledgeArticleInput) {
+  return requestJson<KnowledgeArticle>(`/knowledge/articles/${articleId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function fetchKnowledgeComments(articleId: string) {
+  return requestJson<KnowledgeComment[]>(`/knowledge/articles/${articleId}/comments`);
+}
+
+export function addKnowledgeComment(articleId: string, body: string) {
+  return requestJson<KnowledgeComment>(`/knowledge/articles/${articleId}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
   });
 }

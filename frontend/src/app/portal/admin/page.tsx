@@ -1,442 +1,308 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  updateUserRole as apiUpdateUserRole,
-  updateUserStatus as apiUpdateUserStatus,
-  fetchMe,
-  fetchTickets,
-  fetchUsers,
-  getErrorMessage,
-  updateTicket,
-} from "@/lib/api-client";
+import { useQuery } from "@tanstack/react-query";
+import { MessageSquareText, Settings } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { fetchMe, fetchSlaTracking, fetchTickets, getErrorMessage } from "@/lib/api-client";
 import { queryKeys } from "@/lib/query-keys";
-import {
-  ManagedUser,
-  PaginatedResponse,
-  Role,
-  Ticket,
-  TicketListQuery,
-  TicketPriority,
-  TicketSort,
-  TicketStatus,
-  UserProfile,
-} from "@/lib/types";
+import { PaginatedResponse, SlaTrackingListResponse, Ticket, UserProfile } from "@/lib/types";
 
-export default function AdminPortalPage() {
-  const router = useRouter();
-  const queryClient = useQueryClient();
-  const [validationError, setValidationError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [statusById, setStatusById] = useState<Record<string, TicketStatus>>({});
-  const [priorityById, setPriorityById] = useState<Record<string, TicketPriority>>({});
-  const [reasonById, setReasonById] = useState<Record<string, string>>({});
-  const [statusFilter, setStatusFilter] = useState<TicketStatus | "ALL">("ALL");
-  const [priorityFilter, setPriorityFilter] = useState<TicketPriority | "ALL">("ALL");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
-  const [searchText, setSearchText] = useState("");
-  const [sortOption, setSortOption] = useState<TicketSort>("CREATED_DESC");
-  const [page, setPage] = useState(1);
-  const pageSize = 6;
-  const deferredSearchText = useDeferredValue(searchText);
+function formatDateTime(date: Date) {
+  return {
+    date: date.toLocaleDateString("es-PE", {
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    }),
+    time: date.toLocaleTimeString("es-PE", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }),
+  };
+}
+
+function formatSignedDuration(ms: number) {
+  const sign = ms < 0 ? "-" : "";
+  const totalMinutes = Math.floor(Math.abs(ms) / 60_000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${sign}${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function statusUrgencyRank(status: string) {
+  if (status === "BREACHED") return 0;
+  if (status === "AT_RISK") return 1;
+  if (status === "ON_TRACK") return 2;
+  return 3;
+}
+
+function priorityDotColor(priority: Ticket["priority"]) {
+  if (priority === "URGENT") return "bg-red-500";
+  if (priority === "HIGH") return "bg-orange-500";
+  if (priority === "MEDIUM") return "bg-blue-500";
+  return "bg-cyan-500";
+}
+
+function averageDurationHours(values: number[]) {
+  if (values.length === 0) return "--";
+  const avg = values.reduce((acc, item) => acc + item, 0) / values.length;
+  return avg.toFixed(1);
+}
+
+function kpiClassName(tone: "teal" | "green" | "red" | "lime") {
+  if (tone === "teal") return "text-teal-600";
+  if (tone === "green") return "text-emerald-600";
+  if (tone === "red") return "text-rose-600";
+  return "text-lime-600";
+}
+
+type KpiCardProps = {
+  label: string;
+  value: string;
+  tone: "teal" | "green" | "red" | "lime";
+};
+
+function KpiCard({ label, value, tone }: KpiCardProps) {
+  return (
+    <article className="animate-fade-up rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+      <p className={`mt-2 text-4xl font-bold ${kpiClassName(tone)}`}>{value}</p>
+    </article>
+  );
+}
+
+export default function AdminPanelPage() {
+  const [now, setNow] = useState<Date>(() => new Date());
 
   const meQuery = useQuery<UserProfile>({
     queryKey: queryKeys.me,
     queryFn: fetchMe,
   });
 
-  const roleAllowed = meQuery.data?.role === "ADMIN";
+  const ticketsQuery = useQuery<PaginatedResponse<Ticket>>({
+    queryKey: queryKeys.ticketsList({ page: 1, pageSize: 300, sort: "CREATED_DESC" }),
+    queryFn: () => fetchTickets({ page: 1, pageSize: 300, sort: "CREATED_DESC" }),
+    enabled: meQuery.isSuccess,
+  });
+
+  const slaQuery = useQuery<SlaTrackingListResponse>({
+    queryKey: queryKeys.slaTracking({ page: 1, pageSize: 300, status: "ALL" }),
+    queryFn: () => fetchSlaTracking({ page: 1, pageSize: 300 }),
+    enabled: meQuery.isSuccess,
+    refetchInterval: 30000,
+  });
 
   useEffect(() => {
-    if (meQuery.isSuccess && !roleAllowed) {
-      router.replace("/portal/user");
-    }
-  }, [meQuery.isSuccess, roleAllowed, router]);
+    const interval = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
 
-  const ticketQueryParams = useMemo<TicketListQuery>(
-    () => ({
-      status: statusFilter,
-      priority: priorityFilter,
-      from: fromDate || undefined,
-      to: toDate || undefined,
-      text: deferredSearchText || undefined,
-      searchMode: deferredSearchText ? "FTS" : undefined,
-      sort: sortOption,
-      page,
-      pageSize,
-    }),
-    [statusFilter, priorityFilter, fromDate, toDate, deferredSearchText, sortOption, page],
-  );
-
-  const ticketsQuery = useQuery<PaginatedResponse<Ticket>>({
-    queryKey: queryKeys.ticketsList(ticketQueryParams),
-    queryFn: () => fetchTickets(ticketQueryParams),
-    enabled: meQuery.isSuccess && roleAllowed,
-  });
-
-  const usersQuery = useQuery<ManagedUser[]>({
-    queryKey: queryKeys.users,
-    queryFn: fetchUsers,
-    enabled: meQuery.isSuccess && roleAllowed,
-  });
-
-  const updateTicketMutation = useMutation({
-    mutationFn: ({
-      ticketId,
-      payload,
-    }: {
-      ticketId: string;
-      payload: { status?: TicketStatus; priority?: TicketPriority; statusReason?: string };
-    }) => updateTicket(ticketId, payload),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.tickets });
-    },
-  });
-
-  const updateUserRoleMutation = useMutation({
-    mutationFn: ({ userId, role }: { userId: string; role: Role }) =>
-      apiUpdateUserRole(userId, role),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.users });
-    },
-  });
-
-  const updateUserStatusMutation = useMutation({
-    mutationFn: ({ userId, isActive }: { userId: string; isActive: boolean }) =>
-      apiUpdateUserStatus(userId, isActive),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.users });
-    },
-  });
-
-  const isLoading = meQuery.isLoading || ticketsQuery.isLoading || usersQuery.isLoading;
   const errorMessage =
-    validationError ||
     getErrorMessage(meQuery.error, "") ||
     getErrorMessage(ticketsQuery.error, "") ||
-    getErrorMessage(usersQuery.error, "") ||
-    getErrorMessage(updateTicketMutation.error, "") ||
-    getErrorMessage(updateUserRoleMutation.error, "") ||
-    getErrorMessage(updateUserStatusMutation.error, "");
+    getErrorMessage(slaQuery.error, "");
 
   const tickets = useMemo(() => ticketsQuery.data?.data ?? [], [ticketsQuery.data]);
-  const totalResults = ticketsQuery.data?.total ?? 0;
-  const totalPages = ticketsQuery.data?.totalPages ?? 1;
-  const currentPage = ticketsQuery.data?.page ?? page;
+  const tracking = useMemo(() => slaQuery.data?.data ?? [], [slaQuery.data]);
 
-  const openCount = useMemo(
-    () => tickets.filter((ticket) => ticket.status === "OPEN").length,
-    [tickets],
-  );
-  const resolvedCount = useMemo(
-    () => tickets.filter((ticket) => ticket.status === "RESOLVED").length,
-    [tickets],
-  );
-  const urgentCount = useMemo(
-    () => tickets.filter((ticket) => ticket.priority === "URGENT").length,
+  const activeTickets = useMemo(
+    () => tickets.filter((ticket) => ["OPEN", "IN_PROGRESS", "PENDING"].includes(ticket.status)),
     [tickets],
   );
 
-  function resetToFirstPage() {
-    setPage(1);
-  }
+  const openCount = tickets.filter((ticket) => ticket.status === "OPEN").length;
+  const resolvedCount = tickets.filter((ticket) => ["RESOLVED", "CLOSED"].includes(ticket.status)).length;
+  const criticalCount = tickets.filter((ticket) => ticket.priority === "URGENT").length;
+  const unassignedCount = activeTickets.filter((ticket) => !ticket.assignee).length;
 
-  async function saveTicket(ticketId: string) {
-    setValidationError(null);
-    const payload: { status?: TicketStatus; priority?: TicketPriority; statusReason?: string } =
-      {};
-    if (statusById[ticketId]) payload.status = statusById[ticketId];
-    if (priorityById[ticketId]) payload.priority = priorityById[ticketId];
-    if (reasonById[ticketId]) payload.statusReason = reasonById[ticketId];
+  const firstResponseHours = tracking
+    .filter((item) => Boolean(item.firstResponseAt))
+    .map((item) => {
+      const createdEstimate =
+        new Date(item.responseDeadlineAt).getTime() - item.slaPolicy.responseTimeMinutes * 60_000;
+      const firstResponse = item.firstResponseAt
+        ? new Date(item.firstResponseAt).getTime()
+        : createdEstimate;
+      return (firstResponse - createdEstimate) / 3_600_000;
+    });
 
-    if (!payload.status && !payload.priority) {
-      setValidationError("Selecciona estado o prioridad.");
-      return;
+  const resolutionHours = tracking
+    .filter((item) => Boolean(item.resolvedAt))
+    .map((item) => {
+      const createdEstimate =
+        new Date(item.responseDeadlineAt).getTime() - item.slaPolicy.responseTimeMinutes * 60_000;
+      const resolved = item.resolvedAt ? new Date(item.resolvedAt).getTime() : createdEstimate;
+      return (resolved - createdEstimate) / 3_600_000;
+    });
+
+  const groupedLoad = useMemo(() => {
+    const buckets = new Map<string, number>();
+    for (const ticket of activeTickets) {
+      const groupName = ticket.assignee?.fullName ?? "Sin grupo";
+      buckets.set(groupName, (buckets.get(groupName) ?? 0) + 1);
     }
+    return [...buckets.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+  }, [activeTickets]);
 
-    try {
-      await updateTicketMutation.mutateAsync({ ticketId, payload });
-      setSuccess("Ticket actualizado.");
-    } catch {
-      // handled by mutation error state
-    }
-  }
+  const maxGroupCount = groupedLoad.length > 0 ? Math.max(...groupedLoad.map((item) => item.count)) : 1;
 
-  async function updateUserRole(userId: string, role: Role) {
-    try {
-      await updateUserRoleMutation.mutateAsync({ userId, role });
-      setSuccess("Rol actualizado.");
-    } catch {
-      // handled by mutation error state
-    }
-  }
+  const monitoringRows = useMemo(() => {
+    return [...tracking]
+      .sort((a, b) => {
+        const rankDiff = statusUrgencyRank(a.status) - statusUrgencyRank(b.status);
+        if (rankDiff !== 0) return rankDiff;
+        return (
+          new Date(a.resolutionDeadlineAt).getTime() -
+          new Date(b.resolutionDeadlineAt).getTime()
+        );
+      })
+      .slice(0, 7)
+      .map((item, index) => {
+        const remainingMs = new Date(item.resolutionDeadlineAt).getTime() - now.getTime();
+        return {
+          rank: index + 1,
+          id: item.ticket.code,
+          title: item.ticket.title,
+          assignee: item.ticket.assignee?.fullName ?? "Sin asignar",
+          priority: item.ticket.priority,
+          remainingLabel: formatSignedDuration(remainingMs),
+          remainingMs,
+        };
+      });
+  }, [tracking, now]);
 
-  async function updateUserStatus(userId: string, isActive: boolean) {
-    try {
-      await updateUserStatusMutation.mutateAsync({ userId, isActive });
-      setSuccess("Estado actualizado.");
-    } catch {
-      // handled by mutation error state
-    }
-  }
+  const currentDateTime = formatDateTime(now);
 
   return (
     <section className="space-y-6">
-      <article className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6 text-slate-100 shadow-2xl">
-        <p className="text-xs uppercase tracking-[0.18em] text-cyan-300">Control Center</p>
-        <h2 className="mt-2 text-3xl font-bold">Portal Admin</h2>
-        <p className="mt-2 text-sm text-blue-100/90">
-          {meQuery.data
-            ? `Sesion activa: ${meQuery.data.fullName} (${meQuery.data.role})`
-            : "Administracion operativa y gobierno de usuarios."}
-        </p>
-      </article>
-
-      <article className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Abiertos</p>
-          <p className="mt-2 text-3xl font-bold text-slate-900">{openCount}</p>
+      <header className="animate-fade-up flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center gap-4">
+          <div className="relative inline-flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-teal-400 to-cyan-600 text-white shadow-lg shadow-cyan-100">
+            <MessageSquareText className="h-7 w-7" />
+            <span className="absolute -right-0.5 -bottom-0.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-400" />
+          </div>
+          <div>
+            <h2 className="text-4xl font-bold tracking-tight text-slate-900">
+              Hola, {meQuery.data?.fullName ?? "Super Admin"}
+            </h2>
+            <p className="mt-1 text-sm text-slate-600">
+              IT Manager <span className="mx-2 text-slate-300">|</span> {meQuery.data?.email ?? "admin@comutel.local"}
+            </p>
+          </div>
         </div>
-        <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-            Resueltos
-          </p>
-          <p className="mt-2 text-3xl font-bold text-emerald-600">{resolvedCount}</p>
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <p className="text-sm text-slate-500">{currentDateTime.date}</p>
+            <p className="text-5xl font-bold tracking-tight text-slate-900">{currentDateTime.time}</p>
+          </div>
+          <button className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-slate-600 transition hover:bg-slate-100" type="button">
+            <Settings className="h-5 w-5" />
+          </button>
         </div>
-        <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Urgentes</p>
-          <p className="mt-2 text-3xl font-bold text-red-600">{urgentCount}</p>
-        </div>
-      </article>
+      </header>
 
-      {errorMessage && <p className="text-sm font-medium text-red-700">{errorMessage}</p>}
-      {success && <p className="text-sm font-medium text-emerald-700">{success}</p>}
+      {errorMessage && <p className="text-sm font-semibold text-red-700">{errorMessage}</p>}
 
-      <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-lg font-semibold text-slate-900">Tickets</h3>
-          <p className="text-sm text-slate-600">{totalResults} resultado(s)</p>
-        </div>
+      <div className="grid gap-5 xl:grid-cols-[320px_1fr]">
+        <aside className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
+            <KpiCard label="Abiertos" tone="teal" value={String(openCount)} />
+            <KpiCard label="Resueltos" tone="green" value={String(resolvedCount)} />
+            <KpiCard label="Graves" tone="red" value={String(criticalCount)} />
+            <KpiCard label="Sin asignar" tone="lime" value={String(unassignedCount)} />
+            <KpiCard label="Resp. prom (h)" tone="lime" value={averageDurationHours(firstResponseHours)} />
+            <KpiCard label="Resol. prom (h)" tone="lime" value={averageDurationHours(resolutionHours)} />
+          </div>
 
-        <div className="mb-5 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-6">
-          <input
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm md:col-span-2"
-            placeholder="Buscar por codigo, asunto, solicitante..."
-            value={searchText}
-            onChange={(event) => {
-              setSearchText(event.target.value);
-              resetToFirstPage();
-            }}
-          />
-          <select
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
-            value={statusFilter}
-            onChange={(event) => {
-              setStatusFilter(event.target.value as TicketStatus | "ALL");
-              resetToFirstPage();
-            }}
-          >
-            <option value="ALL">Estado: Todos</option>
-            <option value="OPEN">OPEN</option>
-            <option value="IN_PROGRESS">IN_PROGRESS</option>
-            <option value="PENDING">PENDING</option>
-            <option value="RESOLVED">RESOLVED</option>
-            <option value="CLOSED">CLOSED</option>
-            <option value="CANCELLED">CANCELLED</option>
-          </select>
-          <select
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
-            value={priorityFilter}
-            onChange={(event) => {
-              setPriorityFilter(event.target.value as TicketPriority | "ALL");
-              resetToFirstPage();
-            }}
-          >
-            <option value="ALL">Prioridad: Todas</option>
-            <option value="LOW">LOW</option>
-            <option value="MEDIUM">MEDIUM</option>
-            <option value="HIGH">HIGH</option>
-            <option value="URGENT">URGENT</option>
-          </select>
-          <input
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
-            type="date"
-            value={fromDate}
-            onChange={(event) => {
-              setFromDate(event.target.value);
-              resetToFirstPage();
-            }}
-          />
-          <input
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
-            type="date"
-            value={toDate}
-            onChange={(event) => {
-              setToDate(event.target.value);
-              resetToFirstPage();
-            }}
-          />
-          <select
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm md:col-span-2"
-            value={sortOption}
-            onChange={(event) => {
-              setSortOption(event.target.value as TicketSort);
-              resetToFirstPage();
-            }}
-          >
-            <option value="CREATED_DESC">Orden: mas recientes</option>
-            <option value="CREATED_ASC">Orden: mas antiguos</option>
-            <option value="PRIORITY_DESC">Orden: prioridad alta a baja</option>
-            <option value="PRIORITY_ASC">Orden: prioridad baja a alta</option>
-          </select>
-        </div>
-
-        {isLoading && <p className="text-slate-600">Cargando...</p>}
-        {!isLoading && tickets.length === 0 && <p className="text-slate-600">No hay tickets.</p>}
-        {!isLoading && tickets.length > 0 && (
-          <div className="space-y-4">
-            {tickets.map((ticket) => (
-              <article key={ticket.id} className="rounded-lg border border-slate-200 p-4">
-                <p className="font-semibold text-slate-900">
-                  {ticket.code} - {ticket.title}
-                </p>
-                <p className="text-sm text-slate-600">
-                  {ticket.type} | {ticket.status} | {ticket.priority}
-                </p>
-                <Link
-                  href={`/portal/admin/tickets/${ticket.id}`}
-                  className="mt-2 inline-block rounded-md border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-800"
-                >
-                  Ver detalle
-                </Link>
-                <div className="mt-4 grid gap-2 md:grid-cols-3">
-                  <select
-                    className="rounded-md border border-slate-300 px-3 py-2"
-                    value={statusById[ticket.id] ?? ticket.status}
-                    onChange={(event) =>
-                      setStatusById((prev) => ({
-                        ...prev,
-                        [ticket.id]: event.target.value as TicketStatus,
-                      }))
-                    }
-                  >
-                    <option value="OPEN">OPEN</option>
-                    <option value="IN_PROGRESS">IN_PROGRESS</option>
-                    <option value="PENDING">PENDING</option>
-                    <option value="RESOLVED">RESOLVED</option>
-                    <option value="CLOSED">CLOSED</option>
-                    <option value="CANCELLED">CANCELLED</option>
-                  </select>
-                  <select
-                    className="rounded-md border border-slate-300 px-3 py-2"
-                    value={priorityById[ticket.id] ?? ticket.priority}
-                    onChange={(event) =>
-                      setPriorityById((prev) => ({
-                        ...prev,
-                        [ticket.id]: event.target.value as TicketPriority,
-                      }))
-                    }
-                  >
-                    <option value="LOW">LOW</option>
-                    <option value="MEDIUM">MEDIUM</option>
-                    <option value="HIGH">HIGH</option>
-                    <option value="URGENT">URGENT</option>
-                  </select>
-                  <input
-                    className="rounded-md border border-slate-300 px-3 py-2"
-                    placeholder="Motivo del cambio"
-                    value={reasonById[ticket.id] ?? ""}
-                    onChange={(event) =>
-                      setReasonById((prev) => ({
-                        ...prev,
-                        [ticket.id]: event.target.value,
-                      }))
-                    }
-                  />
-                  <button
-                    className="rounded-md bg-slate-900 px-4 py-2 font-semibold text-white md:col-span-3"
-                    onClick={() => saveTicket(ticket.id)}
-                  >
-                    Guardar cambios
-                  </button>
+          <article className="animate-fade-up rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="text-base font-bold uppercase tracking-[0.08em] text-slate-800">Carga por grupo</h3>
+            <div className="mt-5 space-y-3">
+              {groupedLoad.map((item) => (
+                <div key={item.name} className="grid grid-cols-[1fr_2fr] items-center gap-3">
+                  <p className="text-xs font-medium leading-tight text-slate-600">{item.name}</p>
+                  <div className="h-6 rounded-md bg-slate-100">
+                    <div
+                      className="h-full rounded-md bg-teal-700"
+                      style={{ width: `${Math.max(10, (item.count / maxGroupCount) * 100)}%` }}
+                    />
+                  </div>
                 </div>
-              </article>
-            ))}
-            <div className="flex items-center justify-between border-t border-slate-200 pt-3">
-              <p className="text-sm text-slate-600">
-                Pagina {currentPage} de {totalPages}
-              </p>
-              <div className="flex gap-2">
-                <button
-                  className="rounded-md border border-slate-300 px-3 py-1 text-sm font-semibold text-slate-700 disabled:opacity-40"
-                  disabled={currentPage <= 1}
-                  onClick={() => setPage(Math.max(1, currentPage - 1))}
-                >
-                  Anterior
-                </button>
-                <button
-                  className="rounded-md border border-slate-300 px-3 py-1 text-sm font-semibold text-slate-700 disabled:opacity-40"
-                  disabled={currentPage >= totalPages}
-                  onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
-                >
-                  Siguiente
-                </button>
-              </div>
+              ))}
+              {groupedLoad.length === 0 && <p className="text-sm text-slate-500">Sin datos de carga activos.</p>}
             </div>
-          </div>
-        )}
-      </article>
+          </article>
+        </aside>
 
-      <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h3 className="mb-4 text-lg font-semibold text-slate-900">Usuarios</h3>
-        {isLoading && <p className="text-slate-600">Cargando...</p>}
-        {!isLoading && (usersQuery.data?.length ?? 0) === 0 && (
-          <p className="text-slate-600">No hay usuarios.</p>
-        )}
-        {!isLoading && (usersQuery.data?.length ?? 0) > 0 && (
-          <div className="space-y-3">
-            {(usersQuery.data ?? []).map((user) => (
-              <article
-                key={user.id}
-                className="grid gap-3 rounded-lg border border-slate-200 p-3 md:grid-cols-[1.4fr_1fr_1fr] md:items-center"
-              >
-                <div>
-                  <p className="font-semibold text-slate-900">{user.fullName}</p>
-                  <p className="text-sm text-slate-600">{user.email}</p>
-                </div>
-                <select
-                  className="rounded-md border border-slate-300 px-3 py-2"
-                  value={user.role}
-                  onChange={(event) => updateUserRole(user.id, event.target.value as Role)}
-                >
-                  <option value="ADMIN">ADMIN</option>
-                  <option value="AGENT">AGENT</option>
-                  <option value="REQUESTER">REQUESTER</option>
-                </select>
-                <div className="flex items-center justify-between gap-2">
-                  <p
-                    className={`text-sm font-semibold ${
-                      user.isActive ? "text-emerald-700" : "text-red-700"
-                    }`}
-                  >
-                    {user.isActive ? "ACTIVO" : "INACTIVO"}
-                  </p>
-                  <button
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800"
-                    onClick={() => updateUserStatus(user.id, !user.isActive)}
-                  >
-                    {user.isActive ? "Desactivar" : "Activar"}
-                  </button>
-                </div>
-              </article>
-            ))}
+        <article className="animate-fade-up rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-3xl font-bold tracking-tight text-slate-900">Monitoreo SLA</h3>
+            <p className="text-sm text-slate-500">Ordenado por urgencia</p>
           </div>
-        )}
-      </article>
+
+          <div className="overflow-auto rounded-xl border border-slate-200">
+            <table className="min-w-[760px] divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-100 text-xs uppercase tracking-[0.12em] text-slate-600">
+                <tr>
+                  <th className="px-3 py-2 text-left">#</th>
+                  <th className="px-3 py-2 text-left">ID</th>
+                  <th className="px-3 py-2 text-left">Asunto</th>
+                  <th className="px-3 py-2 text-left">Agente</th>
+                  <th className="px-3 py-2 text-left">Prioridad</th>
+                  <th className="px-3 py-2 text-right">Tiempo restante</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {monitoringRows.map((row) => (
+                  <tr key={row.id}>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-2 text-slate-600">
+                        <span className={`h-2.5 w-2.5 rounded-full ${priorityDotColor(row.priority)}`} />
+                        <span>{row.rank}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 font-semibold text-slate-600">{row.id}</td>
+                    <td className="px-3 py-3">
+                      <p className="font-semibold text-slate-900">{row.title}</p>
+                    </td>
+                    <td className="px-3 py-3">
+                      {row.assignee === "Sin asignar" ? (
+                        <span className="text-sm italic text-slate-400">Sin asignar</span>
+                      ) : (
+                        <span className="inline-flex items-center gap-2">
+                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-teal-100 text-xs font-bold uppercase text-teal-700">
+                            {row.assignee.slice(0, 1)}
+                          </span>
+                          <span className="text-slate-700">{row.assignee}</span>
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-slate-700">{row.priority}</td>
+                    <td className="px-3 py-3 text-right">
+                      <span
+                        className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${
+                          row.remainingMs < 0
+                            ? "bg-rose-200 text-rose-700"
+                            : row.remainingMs < 3_600_000
+                              ? "bg-amber-200 text-amber-800"
+                              : "bg-emerald-100 text-emerald-700"
+                        }`}
+                      >
+                        {row.remainingLabel}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {monitoringRows.length === 0 && <p className="p-5 text-sm text-slate-500">Sin registros SLA para mostrar.</p>}
+          </div>
+        </article>
+      </div>
     </section>
   );
 }

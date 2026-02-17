@@ -1,9 +1,13 @@
 import { Controller, Get } from '@nestjs/common';
 import { AppService } from './app.service';
+import { MonitoringService } from './monitoring/monitoring.service';
 
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+  constructor(
+    private readonly appService: AppService,
+    private readonly monitoringService: MonitoringService,
+  ) {}
 
   @Get()
   getHello(): string {
@@ -12,10 +16,6 @@ export class AppController {
 
   @Get('health')
   getHealth() {
-    return {
-      status: 'ok',
-      service: 'itsm-backend',
-      timestamp: new Date().toISOString(),
-    };
+    return this.monitoringService.getLiveness();
   }
 }

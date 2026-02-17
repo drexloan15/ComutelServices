@@ -12,6 +12,7 @@ import {
   createPinoLoggerService,
   createRequestContextMiddleware,
 } from './logging/pino-logger';
+import { MonitoringService } from './monitoring/monitoring.service';
 
 async function bootstrap() {
   const config = getRuntimeConfig();
@@ -19,6 +20,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: createPinoLoggerService(pinoInstance),
   });
+  const monitoringService = app.get(MonitoringService);
 
   if (config.trustProxy) {
     const expressApp = app.getHttpAdapter().getInstance() as {
@@ -28,6 +30,7 @@ async function bootstrap() {
   }
 
   app.use(createRequestContextMiddleware(pinoInstance));
+  app.use(monitoringService.createHttpMetricsMiddleware());
   const cookieParserMiddleware = cookieParser() as (
     req: Request,
     res: Response,
@@ -68,6 +71,36 @@ async function bootstrap() {
     }),
   );
 
+  const authRateLimiter = rateLimit({
+    windowMs: config.authRateLimitWindowMs,
+    limit: config.authRateLimitMax,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    handler: (req: Request & { requestId?: string }, res: Response) => {
+      const requestId = req.requestId;
+      pinoInstance.warn(
+        {
+          event: 'http.auth_rate_limit.blocked',
+          requestId,
+          method: req.method,
+          path: req.originalUrl,
+          ip: req.ip,
+        },
+        'auth.rate.limit.blocked',
+      );
+      res.status(429).json({
+        statusCode: 429,
+        message: 'Demasiados intentos de autenticacion.',
+        requestId,
+      });
+    },
+  }) as (req: Request, res: Response, next: () => void) => void;
+
+  app.use('/api/auth/login', authRateLimiter);
+  app.use('/api/auth/register', authRateLimiter);
+  app.use('/api/auth/bootstrap-admin', authRateLimiter);
+  app.use('/api/auth/refresh', authRateLimiter);
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -98,6 +131,7 @@ async function bootstrap() {
       env: config.nodeEnv,
       corsOrigins: config.corsOrigins,
       refreshCookieEnabled: config.refreshCookieEnabled,
+      metricsProtected: Boolean(config.monitoringMetricsToken),
     },
     'backend.started',
   );

@@ -18,10 +18,14 @@ export type RuntimeConfig = {
   refreshCookieSameSite: 'lax' | 'strict' | 'none';
   refreshCookieDomain?: string;
   refreshCookiePath: string;
+  refreshCookieMaxAgeMs: number;
   rateLimitWindowMs: number;
   rateLimitMax: number;
+  authRateLimitWindowMs: number;
+  authRateLimitMax: number;
   slaEngineAutoRunEnabled: boolean;
   slaEngineIntervalMs: number;
+  monitoringMetricsToken?: string;
   logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace';
 };
 
@@ -102,11 +106,19 @@ export function getRuntimeConfig(): RuntimeConfig {
     refreshCookieDomain: process.env.AUTH_REFRESH_COOKIE_DOMAIN?.trim(),
     refreshCookiePath:
       process.env.AUTH_REFRESH_COOKIE_PATH?.trim() || '/api/auth',
+    refreshCookieMaxAgeMs:
+      parsePositiveInt(process.env.AUTH_REFRESH_COOKIE_MAX_AGE_MS, 0) ||
+      parseDurationMs(process.env.JWT_REFRESH_TTL, 7 * 24 * 60 * 60 * 1000),
     rateLimitWindowMs: parsePositiveInt(
       process.env.RATE_LIMIT_WINDOW_MS,
       60_000,
     ),
     rateLimitMax: parsePositiveInt(process.env.RATE_LIMIT_MAX, 120),
+    authRateLimitWindowMs: parsePositiveInt(
+      process.env.AUTH_RATE_LIMIT_WINDOW_MS,
+      60_000,
+    ),
+    authRateLimitMax: parsePositiveInt(process.env.AUTH_RATE_LIMIT_MAX, 10),
     slaEngineAutoRunEnabled: parseBoolean(
       process.env.SLA_ENGINE_AUTORUN_ENABLED,
       true,
@@ -115,10 +127,15 @@ export function getRuntimeConfig(): RuntimeConfig {
       process.env.SLA_ENGINE_INTERVAL_MS,
       60_000,
     ),
+    monitoringMetricsToken: process.env.MONITORING_METRICS_TOKEN?.trim(),
     logLevel: parseLogLevel(process.env.LOG_LEVEL, 'info'),
   };
 
   return cachedConfig;
+}
+
+export function resetRuntimeConfigCacheForTests() {
+  cachedConfig = null;
 }
 
 function requireEnv(name: string): string {
@@ -181,6 +198,44 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
     return parsed;
   }
   return fallback;
+}
+
+function parseDurationMs(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  const direct = Number(normalized);
+  if (Number.isFinite(direct) && direct > 0) {
+    return direct;
+  }
+
+  const match = normalized.match(/^(\d+)(ms|s|m|h|d)$/);
+  if (!match) {
+    return fallback;
+  }
+
+  const amount = Number(match[1]);
+  const unit = match[2];
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return fallback;
+  }
+
+  switch (unit) {
+    case 'ms':
+      return amount;
+    case 's':
+      return amount * 1_000;
+    case 'm':
+      return amount * 60_000;
+    case 'h':
+      return amount * 3_600_000;
+    case 'd':
+      return amount * 86_400_000;
+    default:
+      return fallback;
+  }
 }
 
 function parseCorsOrigins(raw: string | undefined, strict: boolean): string[] {

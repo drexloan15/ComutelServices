@@ -1,4 +1,4 @@
-import { AuditLogQuery, TicketListQuery } from "@/lib/types";
+import { AuditLogQuery, KnowledgeListQuery, TicketListQuery } from "@/lib/types";
 
 export const queryKeys = {
   me: ["auth", "me"] as const,
@@ -14,4 +14,7 @@ export const queryKeys = {
   ticket: (ticketId: string) => ["tickets", ticketId] as const,
   ticketComments: (ticketId: string) => ["tickets", ticketId, "comments"] as const,
   ticketHistory: (ticketId: string) => ["tickets", ticketId, "history"] as const,
+  knowledgeArticles: (query: KnowledgeListQuery) => ["knowledge", "articles", query] as const,
+  knowledgeArticle: (articleId: string) => ["knowledge", "article", articleId] as const,
+  knowledgeComments: (articleId: string) => ["knowledge", "article", articleId, "comments"] as const,
 };

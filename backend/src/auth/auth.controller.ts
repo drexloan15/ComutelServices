@@ -29,6 +29,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
+    this.assertAllowedSessionOrigin(req);
     const response = await this.authService.register(dto, req);
     this.setRefreshCookie(res, response.refreshToken);
     return response;
@@ -40,6 +41,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
+    this.assertAllowedSessionOrigin(req);
     const response = await this.authService.bootstrapAdmin(dto, req);
     this.setRefreshCookie(res, response.refreshToken);
     return response;
@@ -51,6 +53,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
+    this.assertAllowedSessionOrigin(req);
     const response = await this.authService.login(dto, req);
     this.setRefreshCookie(res, response.refreshToken);
     return response;
@@ -62,6 +65,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
+    this.assertAllowedSessionOrigin(req);
     const refreshToken = this.resolveRefreshToken(req, dto);
     const response = await this.authService.refresh(refreshToken, req);
     this.setRefreshCookie(res, response.refreshToken);
@@ -106,6 +110,28 @@ export class AuthController {
     return fromCookie.trim();
   }
 
+  private assertAllowedSessionOrigin(req: Request) {
+    const config = getRuntimeConfig();
+    if (!config.refreshCookieEnabled) {
+      return;
+    }
+
+    const originHeader = req.headers.origin;
+    const origin =
+      typeof originHeader === 'string'
+        ? originHeader
+        : Array.isArray(originHeader)
+          ? originHeader[0]
+          : undefined;
+
+    if (!origin) {
+      return;
+    }
+    if (!config.corsOrigins.includes(origin)) {
+      throw new UnauthorizedException('Origen no permitido para sesion web');
+    }
+  }
+
   private setRefreshCookie(res: Response, refreshToken: string) {
     const config = getRuntimeConfig();
     if (!config.refreshCookieEnabled) {
@@ -118,6 +144,7 @@ export class AuthController {
       sameSite: config.refreshCookieSameSite,
       path: config.refreshCookiePath,
       domain: config.refreshCookieDomain,
+      maxAge: config.refreshCookieMaxAgeMs,
     });
   }
 

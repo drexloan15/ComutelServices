@@ -126,6 +126,9 @@ export class AuthService {
     if (!user?.passwordHash) {
       throw new UnauthorizedException('Credenciales invalidas');
     }
+    if (!user.isActive) {
+      throw new UnauthorizedException('Usuario inactivo');
+    }
 
     const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!passwordValid) {
@@ -173,6 +176,9 @@ export class AuthService {
 
     if (!user?.refreshTokenHash) {
       throw new UnauthorizedException('Sesion no valida');
+    }
+    if (!user.isActive) {
+      throw new UnauthorizedException('Usuario inactivo');
     }
 
     const refreshValid = await bcrypt.compare(
@@ -224,6 +230,9 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new UnauthorizedException('Usuario no encontrado');
+    }
+    if (!user.isActive) {
+      throw new UnauthorizedException('Usuario inactivo');
     }
 
     return this.toPublicUser(user);

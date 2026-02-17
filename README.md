@@ -124,6 +124,24 @@ Detalle y permisos (Punto 2):
 - `POST /api/auth/logout` (Bearer access token)
 - `GET /api/auth/me` (Bearer access token)
 
+## API Knowledge (Frontend HALO-style v2)
+
+- `GET /api/knowledge/articles`
+- `GET /api/knowledge/articles/:id`
+- `POST /api/knowledge/articles` (`ADMIN`, `AGENT`)
+- `PATCH /api/knowledge/articles/:id` (`ADMIN`, `AGENT`; `AGENT` solo propios)
+- `GET /api/knowledge/articles/:id/comments`
+- `POST /api/knowledge/articles/:id/comments`
+
+Filtros en listado:
+
+- `search`
+- `tag`
+- `publishedOnly`
+- `sort=LATEST|OLDEST`
+- `page`
+- `pageSize`
+
 ## Semilla inicial de usuarios/roles
 
 Comando:
@@ -303,9 +321,38 @@ Implementado:
   - busqueda diferida en frontend con `useDeferredValue` para UX/rendimiento basico
   - integracion React Query con `queryKey` por filtros para cache/refetch consistente
 - Refinamiento visual inspirado en consola operativa:
-  - login en layout split (hero + formulario)
+  - login premium en layout split (hero inmersivo + panel de acceso):
+    - jerarquia visual reforzada para primera impresion
+    - iconografia en campos y CTA con estados de carga
+    - toggle mostrar/ocultar contrasena
+    - microanimaciones y responsive mobile/desktop
   - portal usuario con hero de ayuda, busqueda y panel lateral de creacion de ticket
   - portal agente con KPIs operativos y bandeja con filtros avanzados
+- Frontend visual v2 estilo consola ITSM con sidebar por rol:
+  - `ADMIN`: `Panel inicial`, `Dashboard`, `Incidencias`, `Knowledge`, `Auditoria`, `SLA`
+  - `AGENT`: `Panel inicial`, `Dashboard`, `Incidencias`, `Knowledge`, `SLA`
+  - `REQUESTER`: `Panel inicial`, `Knowledge`
+  - sidebar con modo contraido/expandido (persistencia en `localStorage`)
+  - iconografia operativa (`lucide-react`) para navegacion y acciones
+  - animaciones UI (`fade-up`, `fade-right`, `pulse-soft`) y tarjetas glass
+  - panel inicial admin redisenado tipo NOC:
+    - encabezado con saludo operativo + reloj en tiempo real
+    - KPIs laterales (abiertos, resueltos, graves, sin asignar, promedios)
+    - tabla central de monitoreo SLA ordenada por urgencia con tiempo restante
+    - carga por grupo en barras horizontales
+- Dashboard con metricas reales desde backend (`tickets` + `sla/tracking`):
+  - distribucion por estado/prioridad
+  - estado SLA
+  - tendencia de tickets (7 dias)
+  - graficos dinamicos profesionales (`recharts`): area, donut y barras SLA
+- Vista de incidencias/requerimientos tipo grid (estilo hoja/tabular) con:
+  - filtros de estado/prioridad/fecha/texto
+  - orden y paginacion server-side
+  - actualizacion inline de estado/prioridad
+- Knowledge tipo foro:
+  - creacion/edicion/publicacion de articulos (titulo, cuerpo, portada, galeria URLs, tags)
+  - comentarios por articulo
+  - portal usuario consume articulos publicados y puede comentar
 
 Validacion automatizada del refresh frontend (Punto 1):
 
@@ -420,7 +467,61 @@ Variables recomendadas en backend `.env`:
 - `BOOTSTRAP_ADMIN_SECRET` (>=32 chars)
 - `RATE_LIMIT_WINDOW_MS=60000`
 - `RATE_LIMIT_MAX=120`
+- `AUTH_RATE_LIMIT_WINDOW_MS=60000`
+- `AUTH_RATE_LIMIT_MAX=10`
+- `AUTH_REFRESH_COOKIE_MAX_AGE_MS=604800000`
+- `MONITORING_METRICS_TOKEN=` (recomendado en ambientes compartidos)
 - `LOG_LEVEL=info`
+
+## Semanas 11-12: Testing, Monitoreo, Hardening
+
+Monitoreo:
+
+- Endpoints de salud y readiness:
+  - `GET /api/health` (liveness legado)
+  - `GET /api/monitoring/health/live`
+  - `GET /api/monitoring/health/ready` (valida DB con `SELECT 1`)
+- Metricas Prometheus:
+  - `GET /api/monitoring/metrics`
+  - protege con header `x-monitoring-token` cuando `MONITORING_METRICS_TOKEN` esta configurado
+- Instrumentacion HTTP:
+  - contador `comutel_http_requests_total`
+  - histograma `comutel_http_request_duration_seconds`
+  - metricas default `prom-client` con prefijo `comutel_`
+
+Hardening adicional:
+
+- Rate limiting dedicado para auth:
+  - `POST /api/auth/login`
+  - `POST /api/auth/register`
+  - `POST /api/auth/bootstrap-admin`
+  - `POST /api/auth/refresh`
+- En modo cookie session (`AUTH_REFRESH_COOKIE_ENABLED=true`) se valida `Origin` permitido para endpoints auth sensibles.
+- Usuarios inactivos (`isActive=false`) quedan bloqueados en:
+  - login
+  - refresh
+  - `GET /api/auth/me`
+
+Testing agregado:
+
+- Unit tests nuevos:
+  - `backend/src/auth/auth.service.spec.ts`
+  - `backend/src/notifications/notifications.service.spec.ts`
+  - `backend/src/sla/sla.service.spec.ts`
+- Test de `AppController` actualizado para `MonitoringService`.
+- Helper de tests para config: `resetRuntimeConfigCacheForTests()`.
+
+Validacion ejecutada en local:
+
+```bash
+npm run lint -w backend
+npm run test -w backend
+npm run build -w backend
+npm run lint -w frontend
+npm run build -w frontend
+npm run test:e2e -w backend -- test/tickets-detail-rbac.e2e-spec.ts
+npm run test:e2e -w backend -- test/tickets-fts-spanish.e2e-spec.ts
+```
 
 ## CI Pipeline
 
