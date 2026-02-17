@@ -2,6 +2,8 @@ import { authedFetch, parseApiError } from "@/lib/auth";
 import {
   AuditLogListResponse,
   AuditLogQuery,
+  BusinessService,
+  CmdbAsset,
   CreateKnowledgeArticleInput,
   KnowledgeArticle,
   KnowledgeComment,
@@ -11,16 +13,21 @@ import {
   PaginatedResponse,
   Role,
   SlaEngineRunSummary,
+  SlaPredictionResponse,
   SlaPolicy,
   SlaTrackingListResponse,
   SlaStatus,
+  ServiceCatalogItem,
   Ticket,
+  TicketApproval,
   TicketComment,
   TicketDetail,
   TicketListQuery,
+  TicketMacro,
   TicketPriority,
   TicketStatus,
   TicketStatusHistoryEntry,
+  TicketWorkspace,
   TicketType,
   UpdateKnowledgeArticleInput,
   UserProfile,
@@ -62,17 +69,42 @@ type CreateTicketInput = {
   type: TicketType;
   requesterName: string;
   requesterEmail: string;
+  catalogItemId?: string;
+  catalogFormPayload?: Record<string, unknown>;
+  impactedServiceId?: string;
 };
 
 type UpdateTicketInput = {
   status?: TicketStatus;
   priority?: TicketPriority;
   statusReason?: string;
+  supportGroupId?: string;
+  slaPolicyId?: string;
+  impactedServiceId?: string;
+  catalogFormPayload?: Record<string, unknown>;
 };
 
 type AddTicketCommentInput = {
   body: string;
   type?: "PUBLIC_NOTE" | "INTERNAL_NOTE" | "WORKLOG";
+};
+
+type AddTicketAttachmentInput = {
+  fileName: string;
+  storageUrl: string;
+  mimeType?: string;
+  sizeBytes?: number;
+};
+
+type CreateTicketApprovalInput = {
+  type: "MANAGER" | "CHANGE" | "SECURITY" | "FINANCE";
+  approverId?: string;
+  note?: string;
+};
+
+type DecideTicketApprovalInput = {
+  decision: "APPROVED" | "REJECTED";
+  note?: string;
 };
 
 export function fetchMe() {
@@ -106,6 +138,10 @@ export function fetchUsers() {
 
 export function fetchTicketDetail(ticketId: string) {
   return requestJson<TicketDetail>(`/tickets/${ticketId}`);
+}
+
+export function fetchTicketWorkspace(ticketId: string) {
+  return requestJson<TicketWorkspace>(`/tickets/${ticketId}/workspace`);
 }
 
 export function fetchTicketComments(ticketId: string) {
@@ -149,6 +185,46 @@ export function addTicketComment(ticketId: string, input: AddTicketCommentInput)
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export function addTicketAttachment(ticketId: string, input: AddTicketAttachmentInput) {
+  return requestJson(`/tickets/${ticketId}/attachments`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function fetchTicketMacros() {
+  return requestJson<TicketMacro[]>("/tickets/automation/macros");
+}
+
+export function applyTicketMacro(ticketId: string, macroId: string, reason?: string) {
+  return requestJson<Ticket>(`/tickets/${ticketId}/macros/${macroId}/apply`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function createTicketApproval(ticketId: string, input: CreateTicketApprovalInput) {
+  return requestJson<TicketApproval>(`/tickets/${ticketId}/approvals`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function decideTicketApproval(
+  ticketId: string,
+  approvalId: string,
+  input: DecideTicketApprovalInput,
+) {
+  return requestJson<TicketApproval>(`/tickets/${ticketId}/approvals/${approvalId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function fetchCatalogItems() {
+  return requestJson<ServiceCatalogItem[]>("/catalog/items");
 }
 
 function buildAuditLogQuery(query: AuditLogQuery) {
@@ -221,6 +297,32 @@ export function runSlaEngine() {
   return requestJson<SlaEngineRunSummary>("/sla/engine/run", {
     method: "POST",
   });
+}
+
+export function fetchSlaPredictions(windowHours = 24) {
+  return requestJson<SlaPredictionResponse>(`/sla/predictions?windowHours=${windowHours}`);
+}
+
+export function pauseSlaTracking(ticketId: string, reason?: string) {
+  return requestJson(`/sla/tracking/${ticketId}/pause`, {
+    method: "PATCH",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function resumeSlaTracking(ticketId: string, reason?: string) {
+  return requestJson(`/sla/tracking/${ticketId}/resume`, {
+    method: "PATCH",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function fetchCmdbServices() {
+  return requestJson<BusinessService[]>("/cmdb/services");
+}
+
+export function fetchCmdbAssets() {
+  return requestJson<CmdbAsset[]>("/cmdb/assets");
 }
 
 function buildKnowledgeQuery(query: KnowledgeListQuery) {

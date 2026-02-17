@@ -85,20 +85,20 @@ export default function LoginPage() {
           <div className="relative z-10 flex h-full flex-col justify-between px-14 py-16">
             <div className="max-w-3xl">
               <div className="mb-10 flex items-center gap-4">
-                <div className="grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-r from-blue-500 to-cyan-400 text-2xl font-bold text-white shadow-lg shadow-blue-500/30">
+                <div className="grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-r from-blue-500 to-cyan-400 text-xl font-bold text-white shadow-lg shadow-blue-500/30">
                   C
                 </div>
-                <p className="text-3xl font-semibold tracking-[0.08em] text-slate-100">COMUTEL SERVICE</p>
+                <p className="text-2xl font-semibold tracking-[0.08em] text-slate-100">COMUTEL SERVICE</p>
               </div>
 
               <p className="text-sm uppercase tracking-[0.26em] text-cyan-300">PLATAFORMA ITSM</p>
-              <h1 className="mt-5 max-w-2xl text-7xl font-bold leading-[1.05] tracking-tight text-white">
+              <h1 className="mt-5 max-w-2xl text-6xl font-bold leading-[1.05] tracking-tight text-white">
                 Gestión inteligente
                 <span className="mt-2 block bg-gradient-to-r from-sky-400 via-cyan-300 to-emerald-300 bg-clip-text text-transparent">
                   para soporte TI.
                 </span>
               </h1>
-              <p className="mt-7 max-w-xl text-2xl leading-relaxed text-blue-100/90">
+              <p className="mt-7 max-w-l text-xl leading-relaxed text-blue-100/90">
                 Optimiza tiempos de respuesta, gestiona el inventario y centraliza el conocimiento en una sola plataforma segura.
               </p>
             </div>
@@ -110,7 +110,7 @@ export default function LoginPage() {
           <span>•</span>
           <span>Soporte</span>
           <span>•</span>
-          <span>Ver. 1.0.0</span>
+          <span>Versión  1.0.0</span>
         </div>
           </div>
         </article>
@@ -129,8 +129,8 @@ export default function LoginPage() {
             </div>
 
             <p className="text-base font-semibold uppercase tracking-[0.22em] text-blue-700">COMUTEL ITSM</p>
-            <h2 className="mt-3 text-5xl font-bold tracking-tight text-slate-900">Bienvenido</h2>
-            <p className="mt-2 text-xl text-slate-600">Ingresa tus credenciales para acceder a la plataforma.</p>
+            <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">Bienvenido</h2>
+            <p className="mt-2 text-l text-slate-600">Ingresa tus credenciales para acceder a la plataforma.</p>
 
             <form className="mt-8 grid gap-4" onSubmit={onSubmit}>
               {authMode === "register" && (
@@ -149,7 +149,7 @@ export default function LoginPage() {
               <label className="group flex items-center gap-3 rounded-2xl border border-slate-300 bg-white px-4 py-3 focus-within:border-blue-500 focus-within:shadow-[0_0_0_3px_rgba(59,130,246,0.16)]">
                 <Mail className="h-4 w-4 text-slate-400 group-focus-within:text-blue-600" />
                 <input
-                  className="w-full bg-transparent text-lg text-slate-900 outline-none placeholder:text-slate-400"
+                  className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
                   placeholder="Correo o usuario"
                   type="email"
                   value={email}
@@ -161,7 +161,7 @@ export default function LoginPage() {
               <label className="group flex items-center gap-3 rounded-2xl border border-slate-300 bg-white px-4 py-3 focus-within:border-blue-500 focus-within:shadow-[0_0_0_3px_rgba(59,130,246,0.16)]">
                 <Lock className="h-4 w-4 text-slate-400 group-focus-within:text-blue-600" />
                 <input
-                  className="w-full bg-transparent text-lg text-slate-900 outline-none placeholder:text-slate-400"
+                  className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
                   placeholder="Contraseña"
                   type={showPassword ? "text" : "password"}
                   value={password}

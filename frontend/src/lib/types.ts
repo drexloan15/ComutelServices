@@ -64,6 +64,24 @@ export type TicketDetail = Ticket & {
   description?: string | null;
   impact: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   urgency: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  supportGroup?: {
+    id: string;
+    code: string;
+    name: string;
+  } | null;
+  catalogItem?: {
+    id: string;
+    key: string;
+    name: string;
+    requiresApproval?: boolean;
+  } | null;
+  catalogFormPayload?: Record<string, unknown> | null;
+  impactedService?: {
+    id: string;
+    code: string;
+    name: string;
+    isCritical?: boolean;
+  } | null;
   requester: {
     id: string;
     fullName: string;
@@ -103,6 +121,142 @@ export type TicketComment = {
     fullName: string;
     email: string;
   };
+};
+
+export type CatalogFieldType =
+  | "TEXT"
+  | "TEXTAREA"
+  | "NUMBER"
+  | "SELECT"
+  | "BOOLEAN"
+  | "DATE"
+  | "EMAIL"
+  | "USER";
+
+export type TicketApprovalType = "MANAGER" | "CHANGE" | "SECURITY" | "FINANCE";
+export type TicketApprovalStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
+export type TicketActivityType =
+  | "CREATED"
+  | "UPDATED"
+  | "COMMENTED"
+  | "STATUS_CHANGED"
+  | "PRIORITY_CHANGED"
+  | "ASSIGNED"
+  | "APPROVAL_REQUESTED"
+  | "APPROVAL_DECIDED"
+  | "ATTACHMENT_ADDED"
+  | "MACRO_APPLIED"
+  | "WORKFLOW_APPLIED"
+  | "SLA_PAUSED"
+  | "SLA_RESUMED";
+
+export type ServiceCatalogField = {
+  id: string;
+  key: string;
+  label: string;
+  fieldType: CatalogFieldType;
+  required: boolean;
+  order: number;
+  placeholder?: string | null;
+  helpText?: string | null;
+  optionsJson?: Record<string, unknown> | null;
+  showWhenFieldKey?: string | null;
+  showWhenValue?: string | null;
+  validationRegex?: string | null;
+};
+
+export type ServiceCatalogItem = {
+  id: string;
+  key: string;
+  name: string;
+  description?: string | null;
+  ticketType: TicketType;
+  defaultPriority: TicketPriority;
+  requiresApproval: boolean;
+  approvalType?: TicketApprovalType | null;
+  isActive: boolean;
+  fields: ServiceCatalogField[];
+};
+
+export type TicketApproval = {
+  id: string;
+  type: TicketApprovalType;
+  status: TicketApprovalStatus;
+  sequence: number;
+  decisionNote?: string | null;
+  requestedAt: string;
+  decidedAt?: string | null;
+  approver?: {
+    id: string;
+    fullName: string;
+    email: string;
+  } | null;
+  requestedBy?: {
+    id: string;
+    fullName: string;
+    email: string;
+  } | null;
+};
+
+export type TicketActivity = {
+  id: string;
+  type: TicketActivityType;
+  title: string;
+  detail?: string | null;
+  metadata?: unknown;
+  createdAt: string;
+  actor?: {
+    id: string;
+    fullName: string;
+    email: string;
+  } | null;
+};
+
+export type TicketAttachment = {
+  id: string;
+  fileName: string;
+  storageUrl: string;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  createdAt: string;
+  uploadedBy?: {
+    id: string;
+    fullName: string;
+    email: string;
+  } | null;
+};
+
+export type TicketMacro = {
+  id: string;
+  name: string;
+  description?: string | null;
+  availableForRole?: Role | null;
+  setStatus?: TicketStatus | null;
+  setPriority?: TicketPriority | null;
+  addCommentBody?: string | null;
+};
+
+export type TicketWorkspaceTimelineItem = {
+  id: string;
+  occurredAt: string;
+  type: "STATUS_HISTORY" | "COMMENT" | "ACTIVITY" | "ATTACHMENT" | "APPROVAL";
+  title: string;
+  detail?: string | null;
+  actor?: {
+    id: string;
+    fullName: string;
+    email: string;
+  } | null;
+};
+
+export type TicketWorkspace = {
+  ticket: TicketDetail;
+  timeline: TicketWorkspaceTimelineItem[];
+  comments: TicketComment[];
+  history: TicketStatusHistoryEntry[];
+  activities: TicketActivity[];
+  approvals: TicketApproval[];
+  attachments: TicketAttachment[];
 };
 
 export type TicketStatusHistoryEntry = {
@@ -241,6 +395,47 @@ export type SlaTrackingEntry = {
 };
 
 export type SlaTrackingListResponse = PaginatedResponse<SlaTrackingEntry>;
+
+export type SlaPredictionEntry = {
+  trackingId: string;
+  status: SlaStatus;
+  resolutionDeadlineAt: string;
+  predictedBreachAt: string;
+  riskScore: number;
+  remainingMinutes: number;
+  ticket: {
+    id: string;
+    code: string;
+    title: string;
+    status: TicketStatus;
+    priority: TicketPriority;
+    assignee?: { id: string; fullName: string; email: string } | null;
+    supportGroup?: { id: string; code: string; name: string } | null;
+  };
+};
+
+export type SlaPredictionResponse = {
+  generatedAt: string;
+  windowHours: number;
+  data: SlaPredictionEntry[];
+};
+
+export type BusinessService = {
+  id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  isCritical: boolean;
+  ownerGroup?: { id: string; code: string; name: string } | null;
+};
+
+export type CmdbAsset = {
+  id: string;
+  code: string;
+  name: string;
+  type: "HARDWARE" | "SOFTWARE" | "SERVICE" | "NETWORK" | "OTHER";
+  status: "IN_USE" | "AVAILABLE" | "MAINTENANCE" | "RETIRED" | "LOST";
+};
 
 export type SlaEngineRunSummary = {
   trigger: "manual" | "auto";

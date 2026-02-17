@@ -3,9 +3,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { MessageSquareText, Settings } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { fetchMe, fetchSlaTracking, fetchTickets, getErrorMessage } from "@/lib/api-client";
+import { fetchMe, fetchSlaPredictions, fetchSlaTracking, fetchTickets, getErrorMessage } from "@/lib/api-client";
 import { queryKeys } from "@/lib/query-keys";
-import { PaginatedResponse, SlaTrackingListResponse, Ticket, UserProfile } from "@/lib/types";
+import { PaginatedResponse, SlaPredictionResponse, SlaTrackingListResponse, Ticket, UserProfile } from "@/lib/types";
+
+const PANEL_FETCH_SIZE = 100;
 
 function formatDateTime(date: Date) {
   return {
@@ -82,16 +84,23 @@ export default function AdminPanelPage() {
   });
 
   const ticketsQuery = useQuery<PaginatedResponse<Ticket>>({
-    queryKey: queryKeys.ticketsList({ page: 1, pageSize: 300, sort: "CREATED_DESC" }),
-    queryFn: () => fetchTickets({ page: 1, pageSize: 300, sort: "CREATED_DESC" }),
+    queryKey: queryKeys.ticketsList({ page: 1, pageSize: PANEL_FETCH_SIZE, sort: "CREATED_DESC" }),
+    queryFn: () => fetchTickets({ page: 1, pageSize: PANEL_FETCH_SIZE, sort: "CREATED_DESC" }),
     enabled: meQuery.isSuccess,
   });
 
   const slaQuery = useQuery<SlaTrackingListResponse>({
-    queryKey: queryKeys.slaTracking({ page: 1, pageSize: 300, status: "ALL" }),
-    queryFn: () => fetchSlaTracking({ page: 1, pageSize: 300 }),
+    queryKey: queryKeys.slaTracking({ page: 1, pageSize: PANEL_FETCH_SIZE, status: "ALL" }),
+    queryFn: () => fetchSlaTracking({ page: 1, pageSize: PANEL_FETCH_SIZE }),
     enabled: meQuery.isSuccess,
     refetchInterval: 30000,
+  });
+
+  const predictionQuery = useQuery<SlaPredictionResponse>({
+    queryKey: queryKeys.slaPredictions(24),
+    queryFn: () => fetchSlaPredictions(24),
+    enabled: meQuery.isSuccess,
+    refetchInterval: 60000,
   });
 
   useEffect(() => {
@@ -102,7 +111,8 @@ export default function AdminPanelPage() {
   const errorMessage =
     getErrorMessage(meQuery.error, "") ||
     getErrorMessage(ticketsQuery.error, "") ||
-    getErrorMessage(slaQuery.error, "");
+    getErrorMessage(slaQuery.error, "") ||
+    getErrorMessage(predictionQuery.error, "");
 
   const tickets = useMemo(() => ticketsQuery.data?.data ?? [], [ticketsQuery.data]);
   const tracking = useMemo(() => slaQuery.data?.data ?? [], [slaQuery.data]);
@@ -116,6 +126,7 @@ export default function AdminPanelPage() {
   const resolvedCount = tickets.filter((ticket) => ["RESOLVED", "CLOSED"].includes(ticket.status)).length;
   const criticalCount = tickets.filter((ticket) => ticket.priority === "URGENT").length;
   const unassignedCount = activeTickets.filter((ticket) => !ticket.assignee).length;
+  const predictedBreaches = predictionQuery.data?.data.length ?? 0;
 
   const firstResponseHours = tracking
     .filter((item) => Boolean(item.firstResponseAt))
@@ -215,6 +226,7 @@ export default function AdminPanelPage() {
             <KpiCard label="Resueltos" tone="green" value={String(resolvedCount)} />
             <KpiCard label="Graves" tone="red" value={String(criticalCount)} />
             <KpiCard label="Sin asignar" tone="lime" value={String(unassignedCount)} />
+            <KpiCard label="Por vencer (24h)" tone="red" value={String(predictedBreaches)} />
             <KpiCard label="Resp. prom (h)" tone="lime" value={averageDurationHours(firstResponseHours)} />
             <KpiCard label="Resol. prom (h)" tone="lime" value={averageDurationHours(resolutionHours)} />
           </div>

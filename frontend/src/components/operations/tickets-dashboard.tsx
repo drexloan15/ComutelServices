@@ -22,6 +22,8 @@ type TicketsDashboardProps = {
   title: string;
 };
 
+const DASHBOARD_FETCH_SIZE = 100;
+
 type DonutPoint = {
   name: string;
   value: number;
@@ -123,14 +125,14 @@ function DonutPanel({ title, data }: { title: string; data: DonutPoint[] }) {
 
 export function TicketsDashboard({ title }: TicketsDashboardProps) {
   const ticketsQuery = useQuery({
-    queryKey: queryKeys.ticketsList({ page: 1, pageSize: 300, sort: "CREATED_DESC" }),
-    queryFn: () => fetchTickets({ page: 1, pageSize: 300, sort: "CREATED_DESC" }),
+    queryKey: queryKeys.ticketsList({ page: 1, pageSize: DASHBOARD_FETCH_SIZE, sort: "CREATED_DESC" }),
+    queryFn: () => fetchTickets({ page: 1, pageSize: DASHBOARD_FETCH_SIZE, sort: "CREATED_DESC" }),
     refetchInterval: 30000,
   });
 
   const slaQuery = useQuery({
-    queryKey: queryKeys.slaTracking({ page: 1, pageSize: 300, status: "ALL" }),
-    queryFn: () => fetchSlaTracking({ page: 1, pageSize: 300 }),
+    queryKey: queryKeys.slaTracking({ page: 1, pageSize: DASHBOARD_FETCH_SIZE, status: "ALL" }),
+    queryFn: () => fetchSlaTracking({ page: 1, pageSize: DASHBOARD_FETCH_SIZE }),
     refetchInterval: 30000,
   });
 

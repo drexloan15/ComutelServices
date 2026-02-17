@@ -83,6 +83,12 @@ Schema inicial ITSM incluido:
 - `GET /api/tickets/:id/comments`
 - `POST /api/tickets/:id/comments`
 - `GET /api/tickets/:id/status-history`
+- `GET /api/tickets/:id/workspace` (timeline consolidado)
+- `POST /api/tickets/:id/attachments`
+- `GET /api/tickets/automation/macros` (`ADMIN`, `AGENT`)
+- `POST /api/tickets/:id/macros/:macroId/apply` (`ADMIN`, `AGENT`)
+- `POST /api/tickets/:id/approvals` (`ADMIN`, `AGENT`)
+- `PATCH /api/tickets/:id/approvals/:approvalId` (`ADMIN`, `AGENT`)
 
 `GET /api/tickets` (server-side filtros + paginacion):
 
@@ -133,6 +139,50 @@ Detalle y permisos (Punto 2):
 - `GET /api/knowledge/articles/:id/comments`
 - `POST /api/knowledge/articles/:id/comments`
 
+## Service Catalog + Workflow + CMDB (Enterprise MVP)
+
+Catalogo de servicios:
+
+- `GET /api/catalog/items`
+- `GET /api/catalog/items/:id`
+- `POST /api/catalog/items` (`ADMIN`)
+- `PATCH /api/catalog/items/:id` (`ADMIN`)
+- `GET /api/catalog/workflow-rules` (`ADMIN`, `AGENT`)
+- `POST /api/catalog/workflow-rules` (`ADMIN`)
+
+CMDB / impacto:
+
+- `GET /api/cmdb/services`
+- `POST /api/cmdb/services` (`ADMIN`)
+- `PATCH /api/cmdb/services/:id` (`ADMIN`)
+- `POST /api/cmdb/services/dependencies` (`ADMIN`, `AGENT`)
+- `POST /api/cmdb/services/:serviceId/assets/:assetId` (`ADMIN`, `AGENT`)
+- `GET /api/cmdb/assets`
+- `POST /api/cmdb/assets` (`ADMIN`, `AGENT`)
+- `GET /api/cmdb/tickets/:ticketId/impact`
+
+SLA/OLA avanzado:
+
+- `GET /api/sla/calendars`
+- `POST /api/sla/calendars` (`ADMIN`)
+- `PATCH /api/sla/tracking/:ticketId/pause`
+- `PATCH /api/sla/tracking/:ticketId/resume`
+- `GET /api/sla/predictions?windowHours=24`
+
+Flujos implementados:
+
+- Creacion de ticket desde catalogo con `catalogItemId` + `catalogFormPayload`.
+- Validacion de campos dinamicos/condicionales en backend.
+- Aprobaciones de ticket (solicitar / aprobar / rechazar) con trazabilidad.
+- Workflow engine en ticket create/update:
+  - ejemplo: `priority=URGENT` -> set grupo + set SLA + notificar + worklog.
+- Workspace pro en detalle ticket:
+  - timeline (actividad, comentarios, historial, adjuntos, aprobaciones)
+  - adjuntos URL-based
+  - macros operativas para agent/admin
+- SLA con pausa/reanudacion y prediccion de breach.
+- CMDB base con servicios, dependencias y relacion servicio<->asset.
+
 Filtros en listado:
 
 - `search`
@@ -159,6 +209,15 @@ Usuarios creados/actualizados (idempotente):
 - `SEED_REQUESTER_EMAIL` -> rol `REQUESTER`
 
 Password por defecto: `SEED_DEFAULT_PASSWORD`
+
+Seed enterprise adicional:
+
+- Grupos de soporte (`MESA_N1`, `CAMPO`)
+- Calendario laboral y policy SLA estandar
+- Catalog items (`ACCESS_REQUEST`, `HW_INCIDENT`) + campos dinamicos
+- Regla workflow urgente -> grupo/SLA/notificacion
+- Macro operativa inicial
+- Servicio CMDB (`CORP-EMAIL`) + asset (`LAP-001`) enlazado
 
 ## RBAC (Semanas 3-5, Punto 2)
 
@@ -340,6 +399,11 @@ Implementado:
     - KPIs laterales (abiertos, resueltos, graves, sin asignar, promedios)
     - tabla central de monitoreo SLA ordenada por urgencia con tiempo restante
     - carga por grupo en barras horizontales
+  - panel inicial agent alineado al admin:
+    - KPIs de cola personal y tickets sin asignar
+    - alertas SLA (incumplidos/en riesgo/en control)
+    - tabla de monitoreo SLA con estado, countdown y acceso directo a detalle de ticket
+    - accesos rapidos a incidencias y dashboard
 - Dashboard con metricas reales desde backend (`tickets` + `sla/tracking`):
   - distribucion por estado/prioridad
   - estado SLA
@@ -430,6 +494,21 @@ npm run prisma:migrate:deploy -w backend
 npm run prisma:generate -w backend
 npm run lint -w backend
 npm run build -w backend
+npm run lint -w frontend
+npm run build -w frontend
+```
+
+Validacion enterprise MVP (catalog/workflow/workspace/sla-ola/cmdb):
+
+```bash
+npm run prisma:migrate:deploy -w backend
+npm run prisma:generate -w backend
+npm run prisma:seed -w backend
+npm run lint -w backend
+npm run build -w backend
+npm run test -w backend -- --runInBand
+npm run test:e2e -w backend -- test/tickets-detail-rbac.e2e-spec.ts
+npm run test:e2e -w backend -- test/tickets-fts-spanish.e2e-spec.ts
 npm run lint -w frontend
 npm run build -w frontend
 ```

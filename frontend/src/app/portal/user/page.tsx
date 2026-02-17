@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FormEvent, useDeferredValue, useMemo, useState } from "react";
 import {
   createTicket,
+  fetchCatalogItems,
   fetchKnowledgeArticles,
   fetchMe,
   fetchTickets,
@@ -14,9 +15,8 @@ import { queryKeys } from "@/lib/query-keys";
 import {
   PaginatedResponse,
   Ticket,
-  TicketPriority,
-  TicketType,
   KnowledgeArticle,
+  ServiceCatalogItem,
   UserProfile,
 } from "@/lib/types";
 
@@ -24,8 +24,8 @@ export default function UserPortalPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [priority, setPriority] = useState<TicketPriority>("MEDIUM");
-  const [type, setType] = useState<TicketType>("INCIDENT");
+  const [catalogItemId, setCatalogItemId] = useState("");
+  const [catalogPayload, setCatalogPayload] = useState<Record<string, unknown>>({});
   const [ticketSearch, setTicketSearch] = useState("");
   const deferredTicketSearch = useDeferredValue(ticketSearch);
   const queryClient = useQueryClient();
@@ -64,12 +64,24 @@ export default function UserPortalPage() {
     enabled: meQuery.isSuccess,
   });
 
+  const catalogQuery = useQuery<ServiceCatalogItem[]>({
+    queryKey: queryKeys.catalogItems,
+    queryFn: fetchCatalogItems,
+    enabled: meQuery.isSuccess,
+  });
+
   const createTicketMutation = useMutation({
     mutationFn: createTicket,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.tickets });
     },
   });
+
+  const effectiveCatalogItemId = catalogItemId || catalogQuery.data?.[0]?.id || "";
+  const selectedCatalogItem = useMemo(
+    () => (catalogQuery.data ?? []).find((item) => item.id === effectiveCatalogItemId) ?? null,
+    [effectiveCatalogItemId, catalogQuery.data],
+  );
 
   const visibleTickets = useMemo(() => {
     if (!meQuery.data) return [];
@@ -101,6 +113,7 @@ export default function UserPortalPage() {
   const errorMessage =
     getErrorMessage(meQuery.error, "") ||
     getErrorMessage(ticketsQuery.error, "") ||
+    getErrorMessage(catalogQuery.error, "") ||
     getErrorMessage(createTicketMutation.error, "");
   const isLoading = meQuery.isLoading || ticketsQuery.isLoading;
 
@@ -109,24 +122,41 @@ export default function UserPortalPage() {
     setSuccess(null);
 
     if (!meQuery.data) return;
+    if (!selectedCatalogItem) return;
 
     try {
       await createTicketMutation.mutateAsync({
         title,
         description: description || undefined,
-        priority,
-        type,
+        priority: selectedCatalogItem.defaultPriority,
+        type: selectedCatalogItem.ticketType,
         requesterName: meQuery.data.fullName,
         requesterEmail: meQuery.data.email,
+        catalogItemId: selectedCatalogItem.id,
+        catalogFormPayload: catalogPayload,
       });
       setTitle("");
       setDescription("");
-      setPriority("MEDIUM");
-      setType("INCIDENT");
+      setCatalogPayload({});
       setSuccess("Ticket creado.");
     } catch {
       // handled by mutation error state
     }
+  }
+
+  function onCatalogFieldChange(fieldKey: string, value: unknown) {
+    setCatalogPayload((prev) => ({
+      ...prev,
+      [fieldKey]: value,
+    }));
+  }
+
+  function isCatalogFieldVisible(field: ServiceCatalogItem["fields"][number]) {
+    if (!field.showWhenFieldKey || field.showWhenValue === null || field.showWhenValue === undefined) {
+      return true;
+    }
+    const dependentValue = catalogPayload[field.showWhenFieldKey];
+    return String(dependentValue ?? "") === String(field.showWhenValue);
   }
 
   return (
@@ -201,25 +231,89 @@ export default function UserPortalPage() {
             />
             <select
               className="rounded-md border border-slate-300 px-3 py-2"
-              value={type}
-              onChange={(event) => setType(event.target.value as TicketType)}
+              value={effectiveCatalogItemId}
+              onChange={(event) => {
+                setCatalogItemId(event.target.value);
+                setCatalogPayload({});
+              }}
+              required
             >
-              <option value="INCIDENT">INCIDENT</option>
-              <option value="SERVICE_REQUEST">SERVICE_REQUEST</option>
-              <option value="PROBLEM">PROBLEM</option>
-              <option value="CHANGE">CHANGE</option>
-              <option value="TASK">TASK</option>
+              {(catalogQuery.data ?? []).map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
             </select>
-            <select
-              className="rounded-md border border-slate-300 px-3 py-2"
-              value={priority}
-              onChange={(event) => setPriority(event.target.value as TicketPriority)}
-            >
-              <option value="LOW">LOW</option>
-              <option value="MEDIUM">MEDIUM</option>
-              <option value="HIGH">HIGH</option>
-              <option value="URGENT">URGENT</option>
-            </select>
+            {selectedCatalogItem && (
+              <p className="text-xs text-slate-600">
+                Tipo {selectedCatalogItem.ticketType} | Prioridad base {selectedCatalogItem.defaultPriority}
+              </p>
+            )}
+            {(selectedCatalogItem?.fields ?? [])
+              .filter((field) => isCatalogFieldVisible(field))
+              .map((field) => {
+                const currentValue = catalogPayload[field.key];
+                if (field.fieldType === "TEXTAREA") {
+                  return (
+                    <textarea
+                      key={field.id}
+                      className="rounded-md border border-slate-300 px-3 py-2"
+                      placeholder={field.placeholder ?? field.label}
+                      value={typeof currentValue === "string" ? currentValue : ""}
+                      onChange={(event) => onCatalogFieldChange(field.key, event.target.value)}
+                      rows={3}
+                      required={field.required}
+                    />
+                  );
+                }
+
+                if (field.fieldType === "SELECT") {
+                  const options = Array.isArray(field.optionsJson?.options)
+                    ? field.optionsJson?.options.filter((option): option is string => typeof option === "string")
+                    : [];
+                  return (
+                    <select
+                      key={field.id}
+                      className="rounded-md border border-slate-300 px-3 py-2"
+                      value={typeof currentValue === "string" ? currentValue : ""}
+                      onChange={(event) => onCatalogFieldChange(field.key, event.target.value)}
+                      required={field.required}
+                    >
+                      <option value="">{field.label}</option>
+                      {options.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  );
+                }
+
+                if (field.fieldType === "BOOLEAN") {
+                  return (
+                    <label key={field.id} className="inline-flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(currentValue)}
+                        onChange={(event) => onCatalogFieldChange(field.key, event.target.checked)}
+                      />
+                      {field.label}
+                    </label>
+                  );
+                }
+
+                return (
+                  <input
+                    key={field.id}
+                    className="rounded-md border border-slate-300 px-3 py-2"
+                    type={field.fieldType === "NUMBER" ? "number" : field.fieldType === "DATE" ? "date" : "text"}
+                    placeholder={field.placeholder ?? field.label}
+                    value={typeof currentValue === "string" || typeof currentValue === "number" ? String(currentValue) : ""}
+                    onChange={(event) => onCatalogFieldChange(field.key, event.target.value)}
+                    required={field.required}
+                  />
+                );
+              })}
             <button className="rounded-md bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 font-semibold text-white">
               Crear ticket
             </button>
