@@ -103,7 +103,15 @@ export default function LoginPage() {
               </p>
             </div>
 
-            <p className="text-lg text-blue-200/75">© 2026 Comutel Perú · Política de Privacidad · Soporte</p>
+            <div className="relative z-10 flex gap-6 text-sm text-blue-200/60 font-medium">
+          <span>&copy; 2026 Comutel Perú</span>
+          <span>•</span>
+          <span>Política de Privacidad</span>
+          <span>•</span>
+          <span>Soporte</span>
+          <span>•</span>
+          <span>Ver. 1.0.0</span>
+        </div>
           </div>
         </article>
 
