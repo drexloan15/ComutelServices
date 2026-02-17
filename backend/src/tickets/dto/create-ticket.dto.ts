@@ -5,6 +5,7 @@ import {
   TicketUrgency,
 } from '@prisma/client';
 import {
+  IsObject,
   IsEmail,
   IsEnum,
   IsOptional,
@@ -51,4 +52,16 @@ export class CreateTicketDto {
   @IsOptional()
   @IsEmail()
   assigneeEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  catalogItemId?: string;
+
+  @IsOptional()
+  @IsObject()
+  catalogFormPayload?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsString()
+  impactedServiceId?: string;
 }

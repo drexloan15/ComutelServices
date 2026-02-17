@@ -3,6 +3,8 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { CatalogModule } from './catalog/catalog.module';
+import { CmdbModule } from './cmdb/cmdb.module';
 import { KnowledgeModule } from './knowledge/knowledge.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -17,6 +19,8 @@ import { UsersModule } from './users/users.module';
     MonitoringModule,
     KnowledgeModule,
     AuditModule,
+    CatalogModule,
+    CmdbModule,
     NotificationsModule,
     SlaModule,
     TicketsModule,

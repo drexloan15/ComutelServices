@@ -32,4 +32,8 @@ export class CreateSlaPolicyDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsString()
+  calendarId?: string;
 }

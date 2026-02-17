@@ -8,6 +8,7 @@ import {
 import {
   IsEmail,
   IsEnum,
+  IsObject,
   IsOptional,
   IsString,
   MaxLength,
@@ -54,4 +55,20 @@ export class UpdateTicketDto {
   @IsOptional()
   @IsEmail()
   assigneeEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  supportGroupId?: string;
+
+  @IsOptional()
+  @IsString()
+  slaPolicyId?: string;
+
+  @IsOptional()
+  @IsString()
+  impactedServiceId?: string;
+
+  @IsOptional()
+  @IsObject()
+  catalogFormPayload?: Record<string, unknown>;
 }

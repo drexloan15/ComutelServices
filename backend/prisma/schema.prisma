@@ -15,9 +15,11 @@ model User {
   lastLoginAt    DateTime?
   role           UserRole              @default(REQUESTER)
   department     String?
+  supportGroupId String?
   isActive       Boolean               @default(true)
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
+  supportGroup   SupportGroup?         @relation(fields: [supportGroupId], references: [id])
   assignedToMe   Ticket[]              @relation("AssignedTickets")
   createdByMe    Ticket[]              @relation("CreatedTickets")
   comments       TicketComment[]       @relation("CommentAuthor")
@@ -28,6 +30,13 @@ model User {
   notifications  Notification[]        @relation("NotificationRecipient")
   knowledgeArticles KnowledgeArticle[] @relation("KnowledgeAuthor")
   knowledgeComments KnowledgeComment[] @relation("KnowledgeCommentAuthor")
+  requestedApprovals TicketApproval[]  @relation("ApprovalRequestedBy")
+  decidedApprovals TicketApproval[]    @relation("ApprovalDecidedBy")
+  ticketActivities TicketActivity[]    @relation("TicketActivityActor")
+  ticketAttachments TicketAttachment[] @relation("TicketAttachmentUploader")
+  workflowAssignments WorkflowRule[]   @relation("WorkflowAssignUser")
+
+  @@index([supportGroupId])
 }
 
 model Ticket {
@@ -47,14 +56,24 @@ model Ticket {
   updatedAt     DateTime              @updatedAt
   requesterId   String
   assigneeId    String?
+  supportGroupId String?
   slaPolicyId   String?
+  catalogItemId String?
+  catalogFormPayload Json?
+  impactedServiceId String?
   assignee      User?                 @relation("AssignedTickets", fields: [assigneeId], references: [id])
   requester     User                  @relation("CreatedTickets", fields: [requesterId], references: [id])
+  supportGroup  SupportGroup?         @relation(fields: [supportGroupId], references: [id])
   comments      TicketComment[]
   statusHistory TicketStatusHistory[]
   assets        TicketAsset[]
   slaPolicy     SlaPolicy?            @relation(fields: [slaPolicyId], references: [id])
   slaTracking   TicketSlaTracking?
+  catalogItem   ServiceCatalogItem?   @relation(fields: [catalogItemId], references: [id])
+  impactedService BusinessService?    @relation("ImpactedServiceTickets", fields: [impactedServiceId], references: [id])
+  approvals     TicketApproval[]
+  activities    TicketActivity[]
+  attachments   TicketAttachment[]
 
   @@index([status, priority])
   @@index([status, priority, createdAt])
@@ -63,6 +82,9 @@ model Ticket {
   @@index([requesterId, createdAt])
   @@index([assigneeId])
   @@index([assigneeId, createdAt])
+  @@index([supportGroupId, createdAt])
+  @@index([catalogItemId, createdAt])
+  @@index([impactedServiceId, createdAt])
   @@index([title])
 }
 
@@ -113,6 +135,7 @@ model Asset {
   updatedAt       DateTime    @updatedAt
   owner           User?       @relation("AssetOwner", fields: [ownerId], references: [id])
   ticketLinks     TicketAsset[]
+  serviceLinks    AssetServiceLink[]
 
   @@index([status, type])
 }
@@ -139,10 +162,13 @@ model SlaPolicy {
   resolutionTimeMinutes Int
   businessHoursOnly     Boolean            @default(true)
   isActive              Boolean            @default(true)
+  calendarId            String?
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
+  calendar              BusinessHoursCalendar? @relation(fields: [calendarId], references: [id])
   tickets               Ticket[]
   trackingRecords       TicketSlaTracking[]
+  workflowRules         WorkflowRule[]
 }
 
 model TicketSlaTracking {
@@ -154,6 +180,10 @@ model TicketSlaTracking {
   firstResponseAt      DateTime?
   resolvedAt           DateTime?
   breachedAt           DateTime?
+  pausedAt             DateTime?
+  pausedAccumulatedMinutes Int       @default(0)
+  nextEscalationAt     DateTime?
+  predictedBreachAt    DateTime?
   status               SlaStatus @default(ON_TRACK)
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
@@ -163,6 +193,8 @@ model TicketSlaTracking {
   @@index([status])
   @@index([responseDeadlineAt])
   @@index([resolutionDeadlineAt])
+  @@index([nextEscalationAt])
+  @@index([predictedBreachAt])
 }
 
 model AuditLog {
@@ -237,6 +269,202 @@ model KnowledgeComment {
   @@index([authorId, createdAt])
 }
 
+model SupportGroup {
+  id          String    @id @default(uuid())
+  code        String    @unique
+  name        String
+  description String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  users       User[]
+  tickets     Ticket[]
+  workflowRules WorkflowRule[]
+  ownedServices BusinessService[]
+}
+
+model ServiceCatalogItem {
+  id              String                @id @default(uuid())
+  key             String                @unique
+  name            String
+  description     String?
+  ticketType      TicketType            @default(SERVICE_REQUEST)
+  defaultPriority TicketPriority        @default(MEDIUM)
+  requiresApproval Boolean              @default(false)
+  approvalType    TicketApprovalType?
+  isActive        Boolean               @default(true)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  fields          ServiceCatalogField[]
+  tickets         Ticket[]
+  workflowRules   WorkflowRule[]
+}
+
+model ServiceCatalogField {
+  id               String      @id @default(uuid())
+  catalogItemId    String
+  key              String
+  label            String
+  fieldType        CatalogFieldType
+  required         Boolean     @default(false)
+  order            Int         @default(0)
+  placeholder      String?
+  helpText         String?
+  optionsJson      Json?
+  showWhenFieldKey String?
+  showWhenValue    String?
+  validationRegex  String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  catalogItem      ServiceCatalogItem @relation(fields: [catalogItemId], references: [id], onDelete: Cascade)
+
+  @@unique([catalogItemId, key])
+  @@index([catalogItemId, order])
+}
+
+model WorkflowRule {
+  id                 String         @id @default(uuid())
+  name               String
+  description        String?
+  isActive           Boolean        @default(true)
+  catalogItemId      String?
+  priorityEquals     TicketPriority?
+  typeEquals         TicketType?
+  onStatus           TicketStatus?
+  actionSetPriority  TicketPriority?
+  actionAssignGroupId String?
+  actionAssignUserId String?
+  actionSetSlaPolicyId String?
+  actionAddComment   String?
+  actionNotifyAdmins Boolean       @default(false)
+  actionNotifyAssignee Boolean     @default(false)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  catalogItem        ServiceCatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
+  actionAssignGroup  SupportGroup? @relation(fields: [actionAssignGroupId], references: [id], onDelete: SetNull)
+  actionAssignUser   User?         @relation("WorkflowAssignUser", fields: [actionAssignUserId], references: [id], onDelete: SetNull)
+  actionSetSlaPolicy SlaPolicy?    @relation(fields: [actionSetSlaPolicyId], references: [id], onDelete: SetNull)
+
+  @@index([isActive, onStatus, priorityEquals, typeEquals])
+  @@index([catalogItemId, isActive])
+}
+
+model TicketApproval {
+  id            String               @id @default(uuid())
+  ticketId      String
+  requestedById String?
+  approverId    String?
+  type          TicketApprovalType
+  status        TicketApprovalStatus @default(PENDING)
+  sequence      Int                  @default(1)
+  decisionNote  String?
+  requestedAt   DateTime             @default(now())
+  decidedAt     DateTime?
+  ticket        Ticket               @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  requestedBy   User?                @relation("ApprovalRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  approver      User?                @relation("ApprovalDecidedBy", fields: [approverId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, status, sequence])
+  @@index([approverId, status])
+}
+
+model TicketActivity {
+  id        String           @id @default(uuid())
+  ticketId  String
+  actorId   String?
+  type      TicketActivityType
+  title     String
+  detail    String?
+  metadata  Json?
+  createdAt DateTime         @default(now())
+  ticket    Ticket           @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  actor     User?            @relation("TicketActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt])
+}
+
+model TicketAttachment {
+  id           String    @id @default(uuid())
+  ticketId     String
+  uploadedById String?
+  fileName     String
+  mimeType     String?
+  sizeBytes    Int?
+  storageUrl   String
+  createdAt    DateTime  @default(now())
+  ticket       Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  uploadedBy   User?     @relation("TicketAttachmentUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt])
+}
+
+model TicketMacro {
+  id             String         @id @default(uuid())
+  name           String         @unique
+  description    String?
+  isActive       Boolean        @default(true)
+  availableForRole UserRole?
+  setStatus      TicketStatus?
+  setPriority    TicketPriority?
+  addCommentBody String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model BusinessHoursCalendar {
+  id           String     @id @default(uuid())
+  name         String     @unique
+  timezone     String     @default("America/Lima")
+  openWeekdays Int[]      @default([1, 2, 3, 4, 5])
+  startHour    Int        @default(9)
+  endHour      Int        @default(18)
+  holidays     DateTime[] @default([])
+  isDefault    Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  slaPolicies  SlaPolicy[]
+}
+
+model BusinessService {
+  id           String             @id @default(uuid())
+  code         String             @unique
+  name         String
+  description  String?
+  ownerGroupId String?
+  isCritical   Boolean            @default(false)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  ownerGroup   SupportGroup?      @relation(fields: [ownerGroupId], references: [id], onDelete: SetNull)
+  tickets      Ticket[]           @relation("ImpactedServiceTickets")
+  assets       AssetServiceLink[]
+  dependenciesFrom ServiceDependency[] @relation("ServiceDependencyFrom")
+  dependenciesTo   ServiceDependency[] @relation("ServiceDependencyTo")
+}
+
+model ServiceDependency {
+  fromServiceId String
+  toServiceId   String
+  impactLevel   ServiceImpactLevel @default(MEDIUM)
+  createdAt     DateTime           @default(now())
+  fromService   BusinessService    @relation("ServiceDependencyFrom", fields: [fromServiceId], references: [id], onDelete: Cascade)
+  toService     BusinessService    @relation("ServiceDependencyTo", fields: [toServiceId], references: [id], onDelete: Cascade)
+
+  @@id([fromServiceId, toServiceId])
+  @@index([toServiceId])
+}
+
+model AssetServiceLink {
+  assetId    String
+  serviceId  String
+  linkType   ServiceLinkType @default(SUPPORTING)
+  createdAt  DateTime        @default(now())
+  asset      Asset           @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  service    BusinessService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@id([assetId, serviceId])
+  @@index([serviceId])
+}
+
 enum UserRole {
   ADMIN
   AGENT
@@ -287,6 +515,47 @@ enum CommentType {
   WORKLOG
 }
 
+enum CatalogFieldType {
+  TEXT
+  TEXTAREA
+  NUMBER
+  SELECT
+  BOOLEAN
+  DATE
+  EMAIL
+  USER
+}
+
+enum TicketApprovalType {
+  MANAGER
+  CHANGE
+  SECURITY
+  FINANCE
+}
+
+enum TicketApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum TicketActivityType {
+  CREATED
+  UPDATED
+  COMMENTED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  ASSIGNED
+  APPROVAL_REQUESTED
+  APPROVAL_DECIDED
+  ATTACHMENT_ADDED
+  MACRO_APPLIED
+  WORKFLOW_APPLIED
+  SLA_PAUSED
+  SLA_RESUMED
+}
+
 enum AssetType {
   HARDWARE
   SOFTWARE
@@ -307,6 +576,19 @@ enum AssetLinkType {
   AFFECTED
   RELATED
   ROOT_CAUSE
+}
+
+enum ServiceImpactLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ServiceLinkType {
+  PRIMARY
+  SUPPORTING
+  SHARED
 }
 
 enum SlaStatus {
@@ -334,6 +616,13 @@ enum AuditAction {
   KNOWLEDGE_ARTICLE_CREATED
   KNOWLEDGE_ARTICLE_UPDATED
   KNOWLEDGE_COMMENT_CREATED
+  CATALOG_ITEM_CREATED
+  WORKFLOW_RULE_APPLIED
+  TICKET_APPROVAL_DECIDED
+  TICKET_ATTACHMENT_ADDED
+  SLA_PAUSED
+  SLA_RESUMED
+  CMDB_SERVICE_LINKED
 }
 
 enum NotificationType {

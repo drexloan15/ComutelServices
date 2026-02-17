@@ -19,6 +19,10 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import type { CurrentUser } from '../auth/types/current-user.type';
 import { CreateTicketCommentDto } from './dto/create-ticket-comment.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
+import { AddTicketAttachmentDto } from './dto/add-ticket-attachment.dto';
+import { ApplyTicketMacroDto } from './dto/apply-ticket-macro.dto';
+import { CreateTicketApprovalDto } from './dto/create-ticket-approval.dto';
+import { DecideTicketApprovalDto } from './dto/decide-ticket-approval.dto';
 import { TicketListQueryDto } from './dto/ticket-list-query.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { TicketsService } from './tickets.service';
@@ -45,8 +49,11 @@ export class TicketsController {
 
   @Post()
   @Roles(UserRole.ADMIN, UserRole.AGENT, UserRole.REQUESTER)
-  create(@Body() dto: CreateTicketDto) {
-    return this.ticketsService.create(dto);
+  create(
+    @Body() dto: CreateTicketDto,
+    @GetCurrentUser() currentUser: CurrentUser,
+  ) {
+    return this.ticketsService.create(dto, currentUser);
   }
 
   @Patch(':id')
@@ -96,5 +103,63 @@ export class TicketsController {
     @GetCurrentUser() currentUser: CurrentUser,
   ) {
     return this.ticketsService.findStatusHistory(id, currentUser);
+  }
+
+  @Get(':id/workspace')
+  @Roles(UserRole.ADMIN, UserRole.AGENT, UserRole.REQUESTER)
+  findWorkspace(
+    @Param('id') id: string,
+    @GetCurrentUser() currentUser: CurrentUser,
+  ) {
+    return this.ticketsService.findWorkspace(id, currentUser);
+  }
+
+  @Post(':id/attachments')
+  @Roles(UserRole.ADMIN, UserRole.AGENT, UserRole.REQUESTER)
+  addAttachment(
+    @Param('id') id: string,
+    @Body() dto: AddTicketAttachmentDto,
+    @GetCurrentUser() currentUser: CurrentUser,
+    @Req() req: Request,
+  ) {
+    return this.ticketsService.addAttachment(id, dto, currentUser, req);
+  }
+
+  @Get('automation/macros')
+  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  listMacros(@GetCurrentUser() currentUser: CurrentUser) {
+    return this.ticketsService.listMacros(currentUser);
+  }
+
+  @Post(':id/macros/:macroId/apply')
+  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  applyMacro(
+    @Param('id') id: string,
+    @Param('macroId') macroId: string,
+    @Body() dto: ApplyTicketMacroDto,
+    @GetCurrentUser() currentUser: CurrentUser,
+  ) {
+    return this.ticketsService.applyMacro(id, macroId, dto, currentUser);
+  }
+
+  @Post(':id/approvals')
+  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  createApproval(
+    @Param('id') id: string,
+    @Body() dto: CreateTicketApprovalDto,
+    @GetCurrentUser() currentUser: CurrentUser,
+  ) {
+    return this.ticketsService.createApproval(id, dto, currentUser);
+  }
+
+  @Patch(':id/approvals/:approvalId')
+  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  decideApproval(
+    @Param('id') id: string,
+    @Param('approvalId') approvalId: string,
+    @Body() dto: DecideTicketApprovalDto,
+    @GetCurrentUser() currentUser: CurrentUser,
+  ) {
+    return this.ticketsService.decideApproval(id, approvalId, dto, currentUser);
   }
 }

@@ -15,7 +15,10 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import type { CurrentUser } from '../auth/types/current-user.type';
 import { CreateSlaPolicyDto } from './dto/create-sla-policy.dto';
+import { CreateBusinessCalendarDto } from './dto/create-business-calendar.dto';
+import { SlaPredictionQueryDto } from './dto/sla-prediction-query.dto';
 import { SlaTrackingQueryDto } from './dto/sla-tracking-query.dto';
+import { ToggleSlaPauseDto } from './dto/toggle-sla-pause.dto';
 import { UpdateSlaPolicyDto } from './dto/update-sla-policy.dto';
 import { SlaService } from './sla.service';
 
@@ -52,5 +55,43 @@ export class SlaController {
   @Roles(UserRole.ADMIN)
   runEngine(@GetCurrentUser() currentUser: CurrentUser) {
     return this.slaService.runEngineByCurrentUser(currentUser);
+  }
+
+  @Get('calendars')
+  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  findCalendars() {
+    return this.slaService.findCalendars();
+  }
+
+  @Post('calendars')
+  @Roles(UserRole.ADMIN)
+  createCalendar(@Body() dto: CreateBusinessCalendarDto) {
+    return this.slaService.createCalendar(dto);
+  }
+
+  @Patch('tracking/:ticketId/pause')
+  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  pauseTracking(
+    @Param('ticketId') ticketId: string,
+    @Body() dto: ToggleSlaPauseDto,
+    @GetCurrentUser() currentUser: CurrentUser,
+  ) {
+    return this.slaService.pauseTracking(ticketId, currentUser, dto.reason);
+  }
+
+  @Patch('tracking/:ticketId/resume')
+  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  resumeTracking(
+    @Param('ticketId') ticketId: string,
+    @Body() dto: ToggleSlaPauseDto,
+    @GetCurrentUser() currentUser: CurrentUser,
+  ) {
+    return this.slaService.resumeTracking(ticketId, currentUser, dto.reason);
+  }
+
+  @Get('predictions')
+  @Roles(UserRole.ADMIN, UserRole.AGENT)
+  getPredictions(@Query() query: SlaPredictionQueryDto) {
+    return this.slaService.getBreachPredictions(query);
   }
 }
