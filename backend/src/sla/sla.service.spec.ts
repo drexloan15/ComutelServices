@@ -1,4 +1,5 @@
 import { SlaStatus, TicketStatus, UserRole } from '@prisma/client';
+import { NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { CurrentUser } from '../auth/types/current-user.type';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -17,7 +18,12 @@ describe('SlaService.runEngine', () => {
     },
     ticketSlaTracking: {
       findMany: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
       upsert: jest.fn(),
+    },
+    ticketActivity: {
+      create: jest.fn(),
     },
   };
 
@@ -144,5 +150,128 @@ describe('SlaService.runEngine', () => {
         action: 'SLA_ENGINE_RUN',
       }),
     );
+  });
+
+  it('pausa tracking activo y registra actividad/auditoria', async () => {
+    prismaMock.ticketSlaTracking.findUnique.mockResolvedValue({
+      id: 'tracking-1',
+      ticketId: 'ticket-1',
+      pausedAt: null,
+      ticket: {
+        id: 'ticket-1',
+        code: 'INC-1',
+        title: 'Demo',
+      },
+    });
+    prismaMock.ticketSlaTracking.update.mockResolvedValue({
+      id: 'tracking-1',
+      ticketId: 'ticket-1',
+      pausedAt: new Date(),
+    });
+
+    const currentUser = {
+      sub: 'agent-1',
+      email: 'agent@example.com',
+      role: UserRole.AGENT,
+    } as const;
+
+    const result = await service.pauseTracking(
+      'ticket-1',
+      currentUser,
+      'esperando proveedor',
+    );
+
+    expect(result.ticketId).toBe('ticket-1');
+    expect(prismaMock.ticketActivity.create).toHaveBeenCalled();
+    expect(auditMock.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'SLA_PAUSED',
+      }),
+    );
+  });
+
+  it('resume tracking desplaza deadlines y acumula minutos de pausa', async () => {
+    const pausedAt = new Date(Date.now() - 5 * 60_000);
+    prismaMock.ticketSlaTracking.findUnique.mockResolvedValue({
+      id: 'tracking-2',
+      ticketId: 'ticket-2',
+      pausedAt,
+      pausedAccumulatedMinutes: 3,
+      responseDeadlineAt: new Date('2026-02-18T10:00:00.000Z'),
+      resolutionDeadlineAt: new Date('2026-02-18T11:00:00.000Z'),
+      nextEscalationAt: new Date('2026-02-18T10:15:00.000Z'),
+      predictedBreachAt: new Date('2026-02-18T10:50:00.000Z'),
+      ticket: {
+        id: 'ticket-2',
+        code: 'INC-2',
+        title: 'Demo 2',
+      },
+    });
+    prismaMock.ticketSlaTracking.update.mockResolvedValue({
+      id: 'tracking-2',
+      ticketId: 'ticket-2',
+      pausedAt: null,
+      pausedAccumulatedMinutes: 8,
+    });
+
+    const currentUser = {
+      sub: 'admin-1',
+      email: 'admin@example.com',
+      role: UserRole.ADMIN,
+    } as const;
+
+    const result = await service.resumeTracking('ticket-2', currentUser);
+
+    expect(result.pausedAt).toBeNull();
+    expect(prismaMock.ticketSlaTracking.update).toHaveBeenCalled();
+    expect(auditMock.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'SLA_RESUMED',
+      }),
+    );
+  });
+
+  it('lanza not found al pausar tracking inexistente', async () => {
+    prismaMock.ticketSlaTracking.findUnique.mockResolvedValue(null);
+    const currentUser = {
+      sub: 'agent-2',
+      email: 'agent2@example.com',
+      role: UserRole.AGENT,
+    } as const;
+
+    await expect(
+      service.pauseTracking('missing-ticket', currentUser),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('calcula predicciones de breach', async () => {
+    prismaMock.ticketSlaTracking.findMany.mockResolvedValue([
+      {
+        id: 'tracking-3',
+        status: SlaStatus.AT_RISK,
+        resolutionDeadlineAt: new Date(Date.now() + 15 * 60_000),
+        predictedBreachAt: null,
+        ticket: {
+          id: 't-3',
+          code: 'INC-3',
+          title: 'Prediccion',
+          status: TicketStatus.IN_PROGRESS,
+          priority: 'HIGH',
+          assignee: null,
+          supportGroup: null,
+        },
+      },
+    ]);
+
+    const result = await service.getBreachPredictions({ windowHours: 1 });
+
+    expect(result.windowHours).toBe(1);
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0]).toMatchObject({
+      trackingId: 'tracking-3',
+      status: SlaStatus.AT_RISK,
+    });
+    expect(typeof result.data[0].riskScore).toBe('number');
+    expect(typeof result.data[0].remainingMinutes).toBe('number');
   });
 });

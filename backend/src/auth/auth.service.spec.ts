@@ -103,4 +103,52 @@ describe('AuthService hardening', () => {
       UnauthorizedException,
     );
   });
+
+  it('registra usuario requester y guarda hash de refresh token', async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce(null);
+    prismaMock.user.create.mockResolvedValue({
+      id: 'user-new',
+      email: 'new@example.com',
+      fullName: 'New',
+      role: UserRole.REQUESTER,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lastLoginAt: null,
+    });
+    prismaMock.user.update.mockResolvedValue({});
+    jwtMock.signAsync
+      .mockResolvedValueOnce('access-token')
+      .mockResolvedValueOnce('refresh-token');
+
+    const result = await service.register({
+      email: 'new@example.com',
+      password: 'Password123!',
+      fullName: 'New',
+    });
+
+    expect(result.user.email).toBe('new@example.com');
+    expect(result.accessToken).toBe('access-token');
+    expect(result.refreshToken).toBe('refresh-token');
+    expect(prismaMock.user.update).toHaveBeenCalled();
+    expect(auditMock.log).toHaveBeenCalled();
+  });
+
+  it('logout limpia refresh token y registra auditoria', async () => {
+    prismaMock.user.update.mockResolvedValue({});
+
+    const result = await service.logout('user-logout');
+
+    expect(result).toEqual({ success: true });
+    expect(prismaMock.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-logout' },
+      data: { refreshTokenHash: null },
+    });
+    expect(auditMock.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AUTH_LOGOUT',
+        resourceId: 'user-logout',
+      }),
+    );
+  });
 });

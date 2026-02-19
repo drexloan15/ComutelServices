@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  ci:
+  quality-gates:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -65,14 +65,14 @@ jobs:
       - name: Lint frontend
         run: npm run lint -w frontend
 
-      - name: Unit tests backend
-        run: npm run test -w backend -- --runInBand
+      - name: Unit tests backend + coverage report
+        run: npm run test:cov:ci -w backend
 
-      - name: E2E RBAC backend
-        run: npm run test:e2e -w backend -- test/tickets-detail-rbac.e2e-spec.ts
+      - name: Coverage thresholds per module
+        run: npm run coverage:check -w backend
 
-      - name: E2E FTS backend
-        run: npm run test:e2e -w backend -- test/tickets-fts-spanish.e2e-spec.ts
+      - name: E2E backend (mandatory suite)
+        run: npm run test:e2e:ci -w backend
 
       - name: Build backend
         run: npm run build -w backend

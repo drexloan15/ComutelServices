@@ -92,4 +92,70 @@ describe('NotificationsService', () => {
     );
     expect(result).toEqual({ success: true, updatedCount: 3 });
   });
+
+  it('create registra auditoria de notificacion', async () => {
+    prismaMock.notification.create.mockResolvedValue({
+      id: 'n-22',
+      recipientUserId: 'u-1',
+      type: NotificationType.SYSTEM,
+      title: 'Titulo',
+      body: 'Body',
+      resource: 'ticket',
+      resourceId: 't-1',
+    });
+
+    const result = await service.create({
+      recipientUserId: 'u-1',
+      type: NotificationType.SYSTEM,
+      title: 'Titulo',
+      body: 'Body',
+      resource: 'ticket',
+      resourceId: 't-1',
+      metadata: { source: 'test' },
+    });
+
+    expect(result.id).toBe('n-22');
+    expect(auditMock.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'NOTIFICATION_CREATED',
+        resourceId: 'n-22',
+      }),
+    );
+  });
+
+  it('findMine aplica filtros y retorna meta paginada', async () => {
+    const rows = [{ id: 'n-1' }, { id: 'n-2' }];
+    prismaMock.$transaction.mockResolvedValue([rows, 8, 4]);
+
+    const result = await service.findMine(currentUser, {
+      page: 2,
+      pageSize: 2,
+      unreadOnly: true,
+      type: NotificationType.SYSTEM,
+    });
+
+    expect(prismaMock.$transaction).toHaveBeenCalled();
+    expect(result).toEqual({
+      data: rows,
+      total: 8,
+      page: 2,
+      pageSize: 2,
+      totalPages: 4,
+      unreadCount: 4,
+    });
+  });
+
+  it('broadcast retorna cero cuando no hay usuarios activos', async () => {
+    prismaMock.user.findMany.mockResolvedValue([]);
+
+    const result = await service.broadcast({
+      recipientUserIds: ['u-1', 'u-2'],
+      type: NotificationType.SLA_BREACHED,
+      title: 'Alerta',
+      body: 'Body',
+    });
+
+    expect(result).toEqual({ created: 0 });
+    expect(prismaMock.notification.createMany).not.toHaveBeenCalled();
+  });
 });

@@ -1,10 +1,21 @@
-import { UserRole, TicketPriority, TicketStatus } from '@prisma/client';
+import { UserRole, TicketPriority, TicketStatus, Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
+import { CatalogService } from '../catalog/catalog.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CurrentUser } from '../auth/types/current-user.type';
 import { TicketsService } from './tickets.service';
 
 describe('TicketsService.findAll', () => {
+  type TicketsServicePrivateHelpers = {
+    parseCountValue: (
+      value: bigint | number | string | null | undefined,
+    ) => number;
+    parseDate: (value?: string) => Date | null;
+    buildTicketListOrderBy: (
+      sort?: 'CREATED_DESC' | 'CREATED_ASC' | 'PRIORITY_DESC' | 'PRIORITY_ASC',
+    ) => Prisma.TicketOrderByWithRelationInput[];
+  };
   const queryRawMock = jest.fn<Promise<unknown[]>, [unknown]>();
   const ticketCountMock = jest.fn<Promise<number>, [unknown]>();
   const ticketFindManyMock = jest.fn<
@@ -22,6 +33,12 @@ describe('TicketsService.findAll', () => {
   const auditMock = {
     log: jest.fn(),
   };
+  const catalogMock = {
+    resolveCatalogForTicketCreation: jest.fn(),
+  };
+  const notificationsMock = {
+    broadcast: jest.fn(),
+  };
 
   let service: TicketsService;
 
@@ -30,6 +47,8 @@ describe('TicketsService.findAll', () => {
     service = new TicketsService(
       prismaMock as unknown as PrismaService,
       auditMock as unknown as AuditService,
+      catalogMock as unknown as CatalogService,
+      notificationsMock as unknown as NotificationsService,
     );
   });
 
@@ -164,5 +183,84 @@ describe('TicketsService.findAll', () => {
       pageSize: 10,
       totalPages: 1,
     });
+  });
+
+  it('returns empty result when full-text count is zero', async () => {
+    const currentUser: CurrentUser = {
+      sub: 'admin-1',
+      email: 'admin@example.com',
+      role: UserRole.ADMIN,
+    };
+
+    queryRawMock.mockResolvedValueOnce([{ total: '0' }]);
+
+    const result = await service.findAll(currentUser, {
+      text: 'sin resultados',
+      searchMode: 'FTS',
+    });
+
+    expect(result).toEqual({
+      data: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
+    });
+    expect(ticketFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns empty result when full-text id page is empty', async () => {
+    const currentUser: CurrentUser = {
+      sub: 'admin-1',
+      email: 'admin@example.com',
+      role: UserRole.ADMIN,
+    };
+
+    queryRawMock
+      .mockResolvedValueOnce([{ total: 3 }])
+      .mockResolvedValueOnce([]);
+
+    const result = await service.findAll(currentUser, {
+      text: 'pagina vacia',
+      searchMode: 'FTS',
+      page: 2,
+      pageSize: 2,
+    });
+
+    expect(result).toEqual({
+      data: [],
+      total: 3,
+      page: 2,
+      pageSize: 2,
+      totalPages: 2,
+    });
+  });
+
+  it('covers internal parsing helpers', () => {
+    const helpers = service as unknown as TicketsServicePrivateHelpers;
+    expect(helpers.parseCountValue(BigInt(7))).toBe(7);
+    expect(helpers.parseCountValue(5)).toBe(5);
+    expect(helpers.parseCountValue('11')).toBe(11);
+    expect(helpers.parseCountValue('not-a-number')).toBe(0);
+    expect(helpers.parseCountValue(undefined)).toBe(0);
+
+    expect(helpers.parseDate('2026-02-18')).toBeInstanceOf(Date);
+    expect(helpers.parseDate('invalid')).toBeNull();
+  });
+
+  it('covers order helper variants', () => {
+    const helpers = service as unknown as TicketsServicePrivateHelpers;
+    expect(helpers.buildTicketListOrderBy('CREATED_ASC')).toEqual([
+      { createdAt: 'asc' },
+    ]);
+    expect(helpers.buildTicketListOrderBy('PRIORITY_ASC')).toEqual([
+      { priority: 'asc' },
+      { createdAt: 'desc' },
+    ]);
+    expect(helpers.buildTicketListOrderBy('PRIORITY_DESC')).toEqual([
+      { priority: 'desc' },
+      { createdAt: 'desc' },
+    ]);
+    expect(helpers.buildTicketListOrderBy()).toEqual([{ createdAt: 'desc' }]);
   });
 });

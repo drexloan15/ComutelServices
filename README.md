@@ -6,6 +6,22 @@ Base profesional para empezar un Service Desk/ITSM con:
 - `backend`: NestJS 11 + Prisma + PostgreSQL
 - Monorepo con `npm workspaces`
 
+## Gobernanza y calidad (Fase 0)
+
+- Roadmap ITSM: `docs/governance/itsm-roadmap-2026.md`
+- RFC tecnico de quality gates: `docs/rfc/RFC-0001-phase0-quality-gates.md`
+- Definition of Done: `docs/governance/definition-of-done.md`
+- Backlog Fase 0.1 (cobertura): `docs/governance/fase-0.1-coverage-backlog.md`
+
+Quality gates obligatorios en CI para PR:
+
+- lint backend/frontend
+- tests unitarios + cobertura
+- umbrales de cobertura por modulo
+- comando objetivo Fase 0.1: `npm run coverage:check:phase01 -w backend`
+- e2e backend
+- build backend/frontend
+
 ## Requisitos
 
 - Node.js LTS recomendado (18/20/22)

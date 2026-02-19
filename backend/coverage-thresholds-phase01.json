@@ -1,0 +1,21 @@
+{
+  "global": {
+    "lines": 18
+  },
+  "modules": {
+    "core": 20,
+    "auth": 15,
+    "tickets": 24,
+    "sla": 27,
+    "notifications": 37,
+    "config": 50,
+    "prisma": 31,
+    "audit": 5,
+    "catalog": 3,
+    "monitoring": 10,
+    "cmdb": 1,
+    "knowledge": 1,
+    "users": 1,
+    "logging": 1
+  }
+}

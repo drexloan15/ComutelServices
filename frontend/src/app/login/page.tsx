@@ -110,7 +110,7 @@ export default function LoginPage() {
           <span>•</span>
           <span>Soporte</span>
           <span>•</span>
-          <span>Versión  1.0.0</span>
+          <span>Versión  1.1.3</span>
         </div>
           </div>
         </article>
